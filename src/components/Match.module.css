@@ -938,3 +938,24 @@
     padding-top: 0.15rem;
   }
 }
+
+/* Save slots -------------------------------------------------------------------------------- */
+
+.menuButtons .slot {
+  display: grid;
+  gap: 0.15rem;
+  text-align: left;
+}
+
+.slot small {
+  font-weight: 500;
+  letter-spacing: 0;
+  color: #9aa6b2;
+}
+
+.saveStatus {
+  min-height: 1.2em;
+  margin: 0.6rem 0 0;
+  font-size: 0.85rem;
+  color: #ffd35a;
+}

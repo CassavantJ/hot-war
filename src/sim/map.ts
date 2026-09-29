@@ -17,7 +17,7 @@ export type Theme = 'temperate' | 'snow' | 'desert';
 export type Mobility = 'ground' | 'naval' | 'amphibious';
 
 /** Where one kind of mover can't go, and the connected areas where it can. */
-class Layer {
+export class Layer {
   readonly blocked: Uint8Array;
   readonly region: Int32Array;
   dirty = true;

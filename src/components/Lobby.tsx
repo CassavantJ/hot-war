@@ -16,17 +16,28 @@ import { FACTIONS, type Faction } from '../sim/rules';
 import { COLORS } from '../sim/setup';
 import type { StartingUnits } from '../sim/world';
 import { drawPreview } from '../view/minimap';
+import type { World } from '../sim/world';
 import { Campaign } from './Campaign';
 import { Help } from './Help';
 import styles from './Lobby.module.css';
+import { SavedGames } from './SavedGames';
+
+export type LobbyMode = 'skirmish' | 'campaign' | 'load';
+
+const MODES: { id: LobbyMode; label: string }[] = [
+  { id: 'skirmish', label: 'Skirmish' },
+  { id: 'campaign', label: 'Campaign' },
+  { id: 'load', label: 'Load game' },
+];
 
 interface Props {
   setup: LobbySetup;
-  mode: 'skirmish' | 'campaign';
-  onMode: (mode: 'skirmish' | 'campaign') => void;
+  mode: LobbyMode;
+  onMode: (mode: LobbyMode) => void;
   onChange: (setup: LobbySetup) => void;
   onStart: (setup: LobbySetup) => void;
   onMission: (mission: MissionDef) => void;
+  onLoad: (world: World) => void;
 }
 
 const STARTING: { value: StartingUnits; label: string }[] = [
@@ -51,7 +62,7 @@ function MapPreview({ mapId }: { mapId: string }) {
 }
 
 /** Skirmish setup: map, players and options. */
-export function Lobby({ setup, mode, onMode, onChange, onStart, onMission }: Props) {
+export function Lobby({ setup, mode, onMode, onChange, onStart, onMission, onLoad }: Props) {
   const [helpOpen, setHelpOpen] = useState(false);
   const spec = mapSpec(setup.mapId);
   const update = (next: LobbySetup) => {
@@ -81,23 +92,25 @@ export function Lobby({ setup, mode, onMode, onChange, onStart, onMission }: Pro
         <p className={styles.tagline}>The Cold War has gone hot</p>
       </header>
       <div className={styles.modeTabs} role="tablist" aria-label="Game mode">
-        {(['skirmish', 'campaign'] as const).map((option) => (
+        {MODES.map((option) => (
           <button
-            key={option}
+            key={option.id}
             type="button"
             role="tab"
-            aria-selected={mode === option}
+            aria-selected={mode === option.id}
             className={styles.modeTab}
             onClick={() => {
-              onMode(option);
+              onMode(option.id);
             }}
           >
-            {option === 'skirmish' ? 'Skirmish' : 'Campaign'}
+            {option.label}
           </button>
         ))}
       </div>
       {mode === 'campaign' ? (
         <Campaign onMission={onMission} />
+      ) : mode === 'load' ? (
+        <SavedGames onLoad={onLoad} />
       ) : (
         <div className={styles.columns}>
           <section className={styles.panel} aria-labelledby="maps-heading">

@@ -5,14 +5,15 @@ import { Match, SPEEDS } from '../game/match';
 import { saveProgress } from '../sim/campaign';
 import type { MissionDef } from '../sim/mission';
 import { FACTIONS } from '../sim/rules';
-import type { GameSettings } from '../sim/world';
+import type { GameSettings, World } from '../sim/world';
 import { Briefing } from './Campaign';
 import { Help } from './Help';
 import styles from './Match.module.css';
+import { SaveDialog } from './SaveDialog';
 import { Sidebar } from './Sidebar';
 
 interface Props {
-  source: { settings: GameSettings } | { mission: MissionDef };
+  source: { settings: GameSettings } | { mission: MissionDef } | { world: World };
   speed: number;
   onRestart: () => void;
   /** Straight on to the next campaign mission, if there is one. */
@@ -25,12 +26,13 @@ export function MatchScreen({ source, speed, onRestart, onNext, onQuit }: Props)
   const [audio] = useState(() => new Audio());
   const [match] = useState(() => new Match(source, audio));
   const mission = match.mission;
-  const [briefing, setBriefing] = useState(mission !== null);
+  const [briefing, setBriefing] = useState(mission !== null && !('world' in source));
   const field = useRef<HTMLDivElement>(null);
   const canvas = useRef<HTMLCanvasElement>(null);
   const overlay = useRef<HTMLCanvasElement>(null);
   const [menu, setMenu] = useState(false);
   const [help, setHelp] = useState(false);
+  const [saving, setSaving] = useState(false);
   const [gameSpeed, setGameSpeed] = useState(speed);
   const [volume, setVolume] = useState(audio.volume);
   const [music, setMusic] = useState(audio.musicVolume);
@@ -73,8 +75,8 @@ export function MatchScreen({ source, speed, onRestart, onNext, onQuit }: Props)
 
   const outcome = match.world.outcome;
   useEffect(() => {
-    match.setPaused(menu || help || briefing);
-  }, [match, menu, help, briefing]);
+    match.setPaused(menu || help || briefing || saving);
+  }, [match, menu, help, briefing, saving]);
 
   useEffect(() => {
     if (mission && outcome === 'won') saveProgress(mission);
@@ -111,7 +113,7 @@ export function MatchScreen({ source, speed, onRestart, onNext, onQuit }: Props)
           setMenu(true);
         }}
       />
-      {menu && outcome === 'playing' && (
+      {menu && outcome === 'playing' && !saving && (
         <div className={styles.backdrop}>
           <div
             className={styles.dialog}
@@ -131,6 +133,14 @@ export function MatchScreen({ source, speed, onRestart, onNext, onQuit }: Props)
                 }}
               >
                 Resume
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setSaving(true);
+                }}
+              >
+                Save game
               </button>
               <button
                 type="button"
@@ -202,6 +212,14 @@ export function MatchScreen({ source, speed, onRestart, onNext, onQuit }: Props)
             </div>
           </div>
         </div>
+      )}
+      {saving && (
+        <SaveDialog
+          world={match.world}
+          onClose={() => {
+            setSaving(false);
+          }}
+        />
       )}
       {help && (
         <Help

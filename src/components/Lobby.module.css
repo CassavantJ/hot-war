@@ -341,3 +341,66 @@
   outline: 2px solid #ffd66b;
   outline-offset: 2px;
 }
+
+/* Saved games ------------------------------------------------------------------------------ */
+
+.panel[data-narrow] {
+  width: min(40rem, 100%);
+  margin: 0 auto;
+}
+
+.saves {
+  display: grid;
+  gap: 0.5rem;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.save {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.6rem;
+  padding: 0.7rem 0.8rem;
+  border: 1px solid #2c3540;
+  border-radius: 0.4rem;
+  background: rgb(0 0 0 / 0.25);
+}
+
+.save > div:first-child {
+  display: grid;
+  gap: 0.15rem;
+}
+
+.save small {
+  color: #9aa6b2;
+}
+
+.saveButtons {
+  display: flex;
+  gap: 0.4rem;
+}
+
+.saveButtons .start {
+  padding: 0.5rem 1.2rem;
+  font-size: 0.85rem;
+}
+
+.small {
+  padding: 0.5rem 0.9rem;
+  border-radius: 0.35rem;
+  background: #1c232c;
+  border: 1px solid #34404d;
+  font-weight: 700;
+}
+
+.small:hover:not(:disabled) {
+  background: #26303b;
+}
+
+.error {
+  margin: 0;
+  color: #ff8a7a;
+}

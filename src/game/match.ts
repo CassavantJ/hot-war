@@ -49,8 +49,16 @@ export class Match {
   private tabHandler: (tab: number | 'next') => void = () => undefined;
   private menuHandler: () => void = () => undefined;
 
-  constructor(source: { settings: GameSettings } | { mission: MissionDef }, audio: Audio) {
-    if ('mission' in source) {
+  constructor(
+    source: { settings: GameSettings } | { mission: MissionDef } | { world: World },
+    audio: Audio,
+  ) {
+    if ('world' in source) {
+      // A saved battle, carrying on where it was left.
+      this.world = source.world;
+      this.mission = source.world.mission?.def ?? null;
+      this.settings = this.mission ? null : source.world.settings;
+    } else if ('mission' in source) {
       this.settings = null;
       this.mission = source.mission;
       this.world = createMission(source.mission);
