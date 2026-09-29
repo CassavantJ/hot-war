@@ -1,0 +1,235 @@
+import { useEffect, useRef, useState, useSyncExternalStore } from 'react';
+
+import { Audio } from '../game/audio';
+import { Match, SPEEDS } from '../game/match';
+import { FACTIONS } from '../sim/rules';
+import type { GameSettings } from '../sim/world';
+import { Help } from './Help';
+import styles from './Match.module.css';
+import { Sidebar } from './Sidebar';
+
+interface Props {
+  settings: GameSettings;
+  speed: number;
+  onRestart: () => void;
+  onQuit: () => void;
+}
+
+/** A battle in progress: the battlefield, the sidebar, and the menus over them. */
+export function MatchScreen({ settings, speed, onRestart, onQuit }: Props) {
+  const [audio] = useState(() => new Audio());
+  const [match] = useState(() => new Match(settings, audio));
+  const field = useRef<HTMLDivElement>(null);
+  const canvas = useRef<HTMLCanvasElement>(null);
+  const overlay = useRef<HTMLCanvasElement>(null);
+  const [menu, setMenu] = useState(false);
+  const [help, setHelp] = useState(false);
+  const [gameSpeed, setGameSpeed] = useState(speed);
+  const [volume, setVolume] = useState(audio.volume);
+  const [voice, setVoice] = useState(audio.voice);
+  useSyncExternalStore(match.subscribe, match.getVersion);
+
+  useEffect(() => {
+    const container = field.current;
+    const view = canvas.current;
+    const hud = overlay.current;
+    if (!container || !view || !hud) return;
+    match.attach(container, view, hud);
+    return () => {
+      match.detach();
+    };
+  }, [match]);
+
+  useEffect(
+    () => () => {
+      audio.close();
+    },
+    [audio],
+  );
+
+  useEffect(() => {
+    match.setMenuHandler(() => {
+      setMenu(true);
+    });
+  }, [match]);
+
+  useEffect(() => {
+    match.setSpeed(gameSpeed);
+  }, [match, gameSpeed]);
+
+  useEffect(() => {
+    audio.setVolume(volume);
+    audio.setVoice(voice);
+  }, [audio, volume, voice]);
+
+  const outcome = match.world.outcome;
+  useEffect(() => {
+    match.setPaused(menu || help);
+  }, [match, menu, help]);
+
+  const me = match.world.players[match.world.local];
+
+  return (
+    <div className={styles.match} data-faction={me?.faction}>
+      <div ref={field} className={styles.field}>
+        <canvas ref={canvas} className={styles.canvas} />
+        <canvas ref={overlay} className={styles.overlay} aria-hidden="true" />
+        <ol className={styles.messages} aria-live="polite">
+          {match.messages.map((message) => (
+            <li key={message.id} data-tone={message.tone}>
+              {message.text}
+            </li>
+          ))}
+        </ol>
+        {match.paused && !menu && !help && <div className={styles.paused}>Paused</div>}
+      </div>
+      <Sidebar
+        match={match}
+        onMenu={() => {
+          setMenu(true);
+        }}
+      />
+      {menu && outcome === 'playing' && (
+        <div className={styles.backdrop}>
+          <div
+            className={styles.dialog}
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="menu-title"
+          >
+            <h2 id="menu-title" className={styles.dialogTitle}>
+              Paused
+            </h2>
+            <div className={styles.menuButtons}>
+              <button
+                type="button"
+                className={styles.primary}
+                onClick={() => {
+                  setMenu(false);
+                }}
+              >
+                Resume
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setHelp(true);
+                }}
+              >
+                How to play
+              </button>
+              <button type="button" onClick={onRestart}>
+                Restart battle
+              </button>
+              <button type="button" onClick={onQuit}>
+                Quit to setup
+              </button>
+            </div>
+            <div className={styles.settings}>
+              <label>
+                <span>Game speed</span>
+                <select
+                  value={gameSpeed}
+                  onChange={(event) => {
+                    setGameSpeed(Number(event.target.value));
+                  }}
+                >
+                  {SPEEDS.map((option) => (
+                    <option key={option.label} value={option.value}>
+                      {option.label}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <label>
+                <span>Volume</span>
+                <input
+                  type="range"
+                  min={0}
+                  max={1}
+                  step={0.05}
+                  value={volume}
+                  onChange={(event) => {
+                    setVolume(Number(event.target.value));
+                  }}
+                />
+              </label>
+              <label className={styles.checkRow}>
+                <input
+                  type="checkbox"
+                  checked={voice}
+                  onChange={(event) => {
+                    setVoice(event.target.checked);
+                  }}
+                />
+                <span>Announcer voice</span>
+              </label>
+            </div>
+          </div>
+        </div>
+      )}
+      {help && (
+        <Help
+          onClose={() => {
+            setHelp(false);
+          }}
+        />
+      )}
+      {outcome !== 'playing' && (
+        <div className={styles.backdrop} data-late="">
+          <div
+            className={styles.dialog}
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="end-title"
+          >
+            <h2 id="end-title" className={styles.endTitle} data-outcome={outcome}>
+              {outcome === 'won' ? 'Victory' : 'Defeat'}
+            </h2>
+            <p className={styles.endText}>
+              {outcome === 'won'
+                ? 'The enemy has been wiped off the map.'
+                : 'Your base has fallen. There’s always another war.'}
+            </p>
+            <table className={styles.stats}>
+              <thead>
+                <tr>
+                  <th scope="col">Player</th>
+                  <th scope="col">Units built</th>
+                  <th scope="col">Kills</th>
+                  <th scope="col">Losses</th>
+                  <th scope="col">Buildings destroyed</th>
+                  <th scope="col">Ore mined</th>
+                </tr>
+              </thead>
+              <tbody>
+                {match.world.players.map((player) => (
+                  <tr key={player.index}>
+                    <th scope="row">
+                      <span className={styles.statSwatch} style={{ background: player.color }} />
+                      {player.name}
+                      <small>{FACTIONS[player.faction].name}</small>
+                    </th>
+                    <td>{player.stats.unitsBuilt}</td>
+                    <td>{player.stats.unitsKilled}</td>
+                    <td>{player.stats.unitsLost}</td>
+                    <td>{player.stats.structuresKilled}</td>
+                    <td>${player.stats.harvested.toLocaleString()}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+            <div className={styles.menuButtons}>
+              <button type="button" className={styles.primary} onClick={onRestart}>
+                Play again
+              </button>
+              <button type="button" onClick={onQuit}>
+                Back to setup
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}

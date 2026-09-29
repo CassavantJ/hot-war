@@ -1,30 +1,38 @@
 import { useState } from 'react';
 
-import styles from './App.module.css';
-import { app } from './app.config';
+import { Lobby } from './components/Lobby';
+import { MatchScreen } from './components/MatchScreen';
+import { loadSetup, toSettings, type LobbySetup } from './game/lobby';
+import type { GameSettings } from './sim/world';
 
-/** Your app starts here. The hub bar, theme and fonts come from src/hub/. */
+interface Battle {
+  settings: GameSettings;
+  speed: number;
+  /** Bumped to start the same battle again from scratch. */
+  round: number;
+}
+
+/** The skirmish setup screen, then the battle. */
 export function App() {
-  const [count, setCount] = useState(0);
-
-  return (
-    <main className={styles.main}>
-      <section className={styles.card}>
-        <h1 className={styles.title}>{app.title}</h1>
-        <p className={styles.text}>{app.description}</p>
-        <button
-          type="button"
-          className={styles.button}
-          onClick={() => {
-            setCount((value) => value + 1);
-          }}
-        >
-          Clicked {count} {count === 1 ? 'time' : 'times'}
-        </button>
-        <p className={styles.hint}>
-          Edit <code>src/App.tsx</code> to start building.
-        </p>
-      </section>
-    </main>
-  );
+  const [setup, setSetup] = useState(loadSetup);
+  const [battle, setBattle] = useState<Battle | null>(null);
+  const start = (next: LobbySetup) => {
+    setBattle({ settings: toSettings(next), speed: next.speed, round: 0 });
+  };
+  if (battle) {
+    return (
+      <MatchScreen
+        key={battle.round}
+        settings={battle.settings}
+        speed={battle.speed}
+        onRestart={() => {
+          setBattle({ ...battle, settings: toSettings(setup), round: battle.round + 1 });
+        }}
+        onQuit={() => {
+          setBattle(null);
+        }}
+      />
+    );
+  }
+  return <Lobby setup={setup} onChange={setSetup} onStart={start} />;
 }
