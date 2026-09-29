@@ -1,5 +1,7 @@
 import * as THREE from 'three';
 
+import { craterTexture, scorchTexture } from './textures';
+
 import { Batch } from './batches';
 
 const VERTEX = /* glsl */ `
@@ -253,25 +255,29 @@ export class Streaks {
 
 const xAxis = new THREE.Vector3(1, 0, 0);
 const SCORCHES = 400;
+const CRATERS = 300;
 const CHUNKS = 1500;
 
-/** Scorch marks and rubble left on the ground. */
+/** Scorch marks, craters and rubble left on the ground. */
 export class Decals {
   private readonly scorch: THREE.InstancedMesh;
+  private readonly craters: THREE.InstancedMesh;
   private readonly rubble: THREE.InstancedMesh;
   private scorchCount = 0;
+  private craterCount = 0;
   private rubbleCount = 0;
   private readonly matrix = new THREE.Matrix4();
 
   constructor(scene: THREE.Object3D) {
-    const disc = new THREE.CircleGeometry(0.5, 10);
+    const disc = new THREE.PlaneGeometry(1, 1);
     disc.rotateX(-Math.PI / 2);
     this.scorch = new THREE.InstancedMesh(
       disc,
       new THREE.MeshBasicMaterial({
+        map: scorchTexture(),
         color: '#1a1612',
         transparent: true,
-        opacity: 0.45,
+        opacity: 0.8,
         depthWrite: false,
         polygonOffset: true,
         polygonOffsetFactor: -2,
@@ -282,9 +288,27 @@ export class Decals {
     this.scorch.frustumCulled = false;
     this.scorch.renderOrder = 1;
     scene.add(this.scorch);
+    const plane = new THREE.PlaneGeometry(1, 1);
+    plane.rotateX(-Math.PI / 2);
+    this.craters = new THREE.InstancedMesh(
+      plane,
+      new THREE.MeshLambertMaterial({
+        map: craterTexture(),
+        transparent: true,
+        depthWrite: false,
+        polygonOffset: true,
+        polygonOffsetFactor: -3,
+      }),
+      CRATERS,
+    );
+    this.craters.count = 0;
+    this.craters.frustumCulled = false;
+    this.craters.renderOrder = 1;
+    this.craters.receiveShadow = true;
+    scene.add(this.craters);
     this.rubble = new THREE.InstancedMesh(
       new THREE.BoxGeometry(1, 1, 1),
-      new THREE.MeshLambertMaterial({ color: '#5b5751' }),
+      new THREE.MeshStandardMaterial({ color: '#6b665e', roughness: 0.9 }),
       CHUNKS,
     );
     this.rubble.count = 0;
@@ -302,6 +326,17 @@ export class Decals {
     this.scorchCount++;
     this.scorch.count = Math.min(SCORCHES, this.scorchCount);
     this.scorch.instanceMatrix.needsUpdate = true;
+  }
+
+  /** A shell crater: a pit ringed with thrown-up earth. */
+  addCrater(x: number, z: number, size: number): void {
+    const slot = this.craterCount % CRATERS;
+    this.matrix.makeRotationY(Math.random() * 6).setPosition(x, 0.018, z);
+    this.matrix.scale(new THREE.Vector3(size, 1, size * (0.85 + Math.random() * 0.3)));
+    this.craters.setMatrixAt(slot, this.matrix);
+    this.craterCount++;
+    this.craters.count = Math.min(CRATERS, this.craterCount);
+    this.craters.instanceMatrix.needsUpdate = true;
   }
 
   /** A burnt patch where a building stood, strewn with broken concrete. */

@@ -6,6 +6,7 @@ import { MAX_ORE } from '../sim/rules';
 import { Batch } from './batches';
 import { drillGeometry, oreGeometry, treeGeometries } from './models';
 import { Shape, teamMaterial } from './shapes';
+import { detailTexture, groundTexture } from './textures';
 
 type Palette = Record<number, string>;
 
@@ -63,7 +64,7 @@ export class Terrain {
   constructor(map: GameMap) {
     this.map = map;
     const palette = PALETTES[map.theme];
-    this.group.add(this.buildGround(palette));
+    this.group.add(this.buildGround());
     this.group.add(this.buildWater(palette.water));
     this.group.add(this.buildOutside(palette.outside));
     this.group.add(this.buildSkirt());
@@ -117,46 +118,13 @@ export class Terrain {
     return Math.min(-0.16, depth);
   }
 
-  private colorAt(
-    vx: number,
-    vz: number,
-    palette: Palette & { bed: string },
-    out: THREE.Color,
-  ): THREE.Color {
-    const map = this.map;
-    let r = 0;
-    let g = 0;
-    let b = 0;
-    let n = 0;
-    const tmp = new THREE.Color();
-    for (const [dx, dz] of [
-      [-1, -1],
-      [0, -1],
-      [-1, 0],
-      [0, 0],
-    ] as const) {
-      const x = vx + dx;
-      const z = vz + dz;
-      if (!map.inside(x, z)) continue;
-      const ground = map.groundAt(map.index(x, z));
-      tmp.set(ground === GROUND.water ? palette.bed : (palette[ground] ?? '#888'));
-      r += tmp.r;
-      g += tmp.g;
-      b += tmp.b;
-      n++;
-    }
-    const shade = 0.92 + hash2(vx, vz, 5) * 0.16;
-    out.setRGB((r / n) * shade, (g / n) * shade, (b / n) * shade);
-    return out;
-  }
-
-  private buildGround(palette: Palette & { bed: string }): THREE.Mesh {
+  private buildGround(): THREE.Mesh {
     const map = this.map;
     const w = map.width;
     const h = map.height;
     const positions = new Float32Array((w + 1) * (h + 1) * 3);
     const colors = new Float32Array((w + 1) * (h + 1) * 3);
-    const color = new THREE.Color();
+    const uvs = new Float32Array((w + 1) * (h + 1) * 2);
     for (let z = 0; z <= h; z++) {
       for (let x = 0; x <= w; x++) {
         const i = z * (w + 1) + x;
@@ -164,14 +132,18 @@ export class Terrain {
         // Nudge inner vertices about so coasts and cliff edges wander naturally.
         const edge = x === 0 || z === 0 || x === w || z === h;
         const nudge = edge ? 0 : 0.34;
-        positions[i * 3] = x + (hash2(x, z, 41) - 0.5) * nudge;
+        const px = x + (hash2(x, z, 41) - 0.5) * nudge;
+        const pz = z + (hash2(x, z, 43) - 0.5) * nudge;
+        positions[i * 3] = px;
         positions[i * 3 + 1] = height;
-        positions[i * 3 + 2] = z + (hash2(x, z, 43) - 0.5) * nudge;
-        this.colorAt(x, z, palette, color);
-        if (height > 0.3) color.multiplyScalar(0.85 + hash2(x, z, 9) * 0.2);
-        colors[i * 3] = color.r;
-        colors[i * 3 + 1] = color.g;
-        colors[i * 3 + 2] = color.b;
+        positions[i * 3 + 2] = pz;
+        uvs[i * 2] = px / w;
+        uvs[i * 2 + 1] = 1 - pz / h;
+        // Hollows and cliff tops a touch darker, like ambient shadow.
+        const shade = height > 0.3 ? 0.8 + hash2(x, z, 9) * 0.15 : height < -0.05 ? 0.85 : 1;
+        colors[i * 3] = shade;
+        colors[i * 3 + 1] = shade;
+        colors[i * 3 + 2] = shade;
       }
     }
     const indices: number[] = [];
@@ -187,9 +159,33 @@ export class Terrain {
     const geometry = new THREE.BufferGeometry();
     geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
     geometry.setAttribute('color', new THREE.BufferAttribute(colors, 3));
+    geometry.setAttribute('uv', new THREE.BufferAttribute(uvs, 2));
     geometry.setIndex(indices);
     geometry.computeVertexNormals();
-    const mesh = new THREE.Mesh(geometry, new THREE.MeshLambertMaterial({ vertexColors: true }));
+    const texture = groundTexture(map);
+    const material = new THREE.MeshStandardMaterial({
+      map: texture,
+      vertexColors: true,
+      roughness: 0.95,
+      metalness: 0,
+    });
+    const detail = detailTexture();
+    material.onBeforeCompile = (shader) => {
+      shader.uniforms.detailMap = { value: detail };
+      shader.vertexShader = shader.vertexShader
+        .replace('#include <common>', '#include <common>\nvarying vec2 vGroundXZ;')
+        .replace('#include <begin_vertex>', '#include <begin_vertex>\nvGroundXZ = position.xz;');
+      shader.fragmentShader = shader.fragmentShader
+        .replace(
+          '#include <common>',
+          '#include <common>\nuniform sampler2D detailMap;\nvarying vec2 vGroundXZ;',
+        )
+        .replace(
+          '#include <map_fragment>',
+          '#include <map_fragment>\nfloat grain = texture2D(detailMap, vGroundXZ * 0.3).r;\ndiffuseColor.rgb *= mix(1.0, grain * 2.0, 0.5);',
+        );
+    };
+    const mesh = new THREE.Mesh(geometry, material);
     mesh.receiveShadow = true;
     return mesh;
   }
@@ -198,12 +194,12 @@ export class Terrain {
     const map = this.map;
     const geometry = new THREE.PlaneGeometry(map.width - 0.04, map.height - 0.04);
     geometry.rotateX(-Math.PI / 2);
-    const material = new THREE.MeshPhongMaterial({
+    const material = new THREE.MeshStandardMaterial({
       color: hex,
       transparent: true,
-      opacity: 0.82,
-      shininess: 80,
-      specular: new THREE.Color('#9fd0ff'),
+      opacity: 0.84,
+      roughness: 0.12,
+      metalness: 0.2,
     });
     const mesh = new THREE.Mesh(geometry, material);
     mesh.position.set(map.width / 2, WATER_LEVEL, map.height / 2);

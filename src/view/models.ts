@@ -2,7 +2,7 @@ import type * as THREE from 'three';
 
 import type { Theme } from '../sim/map';
 import type { StructureType, UnitType } from '../sim/rules';
-import { Shape } from './shapes';
+import { Shape, setFinish } from './shapes';
 
 /**
  * Every model in the game, made from simple solids. Units face +x; structures are centred
@@ -26,28 +26,45 @@ const T = '#ffffff';
 const TREAD = '#262626';
 const WHEEL = '#1f1f1f';
 const SKIN = '#e0b08a';
-const CONCRETE = '#9a9a92';
-const SLAB = '#7f817b';
-const DARK = '#2e3238';
-const WINDOW = '#1d2a36';
+const CONCRETE = '#8f8d85';
+const SLAB = '#737570';
+const KERB = '#5d5f5b';
+const DARK = '#2a2e34';
+const WINDOW = '#1a2836';
+const HAZARD = '#e2b21e';
+const LAMP = '#fff0b8';
+const STEEL = '#6c737b';
+const PIPE = '#80878f';
 
 const ACCORD = {
-  body: '#b3bdc7',
-  dark: '#5b6672',
-  trim: '#86949f',
-  glass: '#8fd6ff',
+  body: '#7f8a96',
+  dark: '#353d47',
+  trim: '#a9b4bf',
+  glass: '#86cff5',
   glow: '#79ecff',
   uniform: '#6f7f5a',
 };
 
 const BLOC = {
-  body: '#6f7552',
-  dark: '#464a33',
-  trim: '#999a7c',
+  body: '#6f6a4c',
+  dark: '#3f3c2b',
+  trim: '#958f6c',
   glass: '#ffcf7a',
   glow: '#ff8a3d',
   uniform: '#6a5a44',
 };
+
+// Glass and polished metal gloss over; lamps, screens and crystals light themselves.
+setFinish(WINDOW, { shine: 0.9 });
+setFinish(ACCORD.glass, { shine: 1 });
+setFinish(ACCORD.glow, { glow: true });
+setFinish(ACCORD.body, { shine: 0.22 });
+setFinish(ACCORD.trim, { shine: 0.4 });
+setFinish(BLOC.glass, { shine: 0.8, glow: true });
+setFinish(BLOC.glow, { glow: true });
+setFinish(LAMP, { glow: true });
+setFinish(STEEL, { shine: 0.5 });
+setFinish(PIPE, { shine: 0.6 });
 
 type Palette = typeof ACCORD;
 
@@ -529,7 +546,104 @@ const UNIT_MODELS: Record<UnitType, () => Model> = {
 // Structures ---------------------------------------------------------------------------------
 
 function slab(shape: Shape, w: number, h: number): Shape {
-  return shape.box(w - 0.06, 0.06, h - 0.06, 0, 0.03, 0, SLAB);
+  const x = w / 2 - 0.03;
+  const z = h / 2 - 0.03;
+  shape
+    .box(w - 0.06, 0.06, h - 0.06, 0, 0.03, 0, SLAB)
+    .box(w - 0.02, 0.07, 0.06, 0, 0.035, z, KERB)
+    .box(0.06, 0.07, h - 0.02, x, 0.035, 0, KERB)
+    .box(w - 0.02, 0.07, 0.06, 0, 0.035, -z, KERB)
+    .box(0.06, 0.07, h - 0.02, -x, 0.035, 0, KERB);
+  // Hazard stripes along the two edges that face the camera.
+  const stripes = (length: number, along: 'x' | 'z') => {
+    const count = Math.floor((length - 0.3) / 0.14);
+    for (let i = 0; i < count; i++) {
+      const t = (i - (count - 1) / 2) * 0.14;
+      const color = i % 2 ? DARK : HAZARD;
+      if (along === 'x') shape.box(0.12, 0.012, 0.07, t, 0.066, z - 0.1, color);
+      else shape.box(0.07, 0.012, 0.12, x - 0.1, 0.066, t, color);
+    }
+  };
+  stripes(w, 'x');
+  stripes(h, 'z');
+  for (const [cx, cz] of [
+    [x - 0.06, z - 0.06],
+    [-x + 0.06, z - 0.06],
+    [x - 0.06, -z + 0.06],
+  ] as const) {
+    shape.box(0.05, 0.1, 0.05, cx, 0.1, cz, DARK).box(0.06, 0.04, 0.06, cx, 0.17, cz, LAMP);
+  }
+  return shape;
+}
+
+/** Rooftop clutter: air handlers, vents, a hatch and an aerial, placed by a seed. */
+function rooftop(
+  shape: Shape,
+  x: number,
+  y: number,
+  z: number,
+  w: number,
+  d: number,
+  seed: number,
+): Shape {
+  let state = seed * 9301 + 49297;
+  const random = () => {
+    state = (state * 9301 + 49297) % 233280;
+    return state / 233280;
+  };
+  const spot = () => [x + (random() - 0.5) * (w - 0.3), z + (random() - 0.5) * (d - 0.3)] as const;
+  const [ax, az] = spot();
+  shape
+    .box(0.26, 0.14, 0.2, ax, y + 0.07, az, STEEL)
+    .cylinder(0.07, 0.07, 0.02, ax, y + 0.15, az, DARK, { sides: 8 });
+  for (let i = 0; i < 2; i++) {
+    const [vx, vz] = spot();
+    shape
+      .box(0.12, 0.06, 0.12, vx, y + 0.03, vz, DARK)
+      .box(0.14, 0.02, 0.14, vx, y + 0.07, vz, PIPE);
+  }
+  const [hx, hz] = spot();
+  shape.box(0.18, 0.03, 0.18, hx, y + 0.015, hz, KERB);
+  if (random() < 0.7) {
+    const [px, pz] = spot();
+    shape
+      .cylinder(0.008, 0.012, 0.5, px, y + 0.25, pz, PIPE, { sides: 4 })
+      .box(0.03, 0.03, 0.03, px, y + 0.51, pz, '#ff4a3a', { glow: true });
+  }
+  return shape;
+}
+
+/** A pipe run along a wall, with brackets. */
+function pipes(
+  shape: Shape,
+  x: number,
+  y: number,
+  z: number,
+  length: number,
+  along: 'x' | 'z',
+): Shape {
+  const options = along === 'x' ? {} : { ry: Math.PI / 2 };
+  shape.tube(0.03, length, x, y, z, PIPE, { ...options, sides: 6 });
+  shape.tube(0.025, length, x, y - 0.08, z, STEEL, { ...options, sides: 6 });
+  for (let t = -length / 2 + 0.1; t <= length / 2 - 0.1; t += 0.35) {
+    if (along === 'x') shape.box(0.03, 0.14, 0.05, x + t, y - 0.04, z, DARK);
+    else shape.box(0.05, 0.14, 0.03, x, y - 0.04, z + t, DARK);
+  }
+  return shape;
+}
+
+/** A lit sign or light strip. */
+function lightStrip(
+  shape: Shape,
+  x: number,
+  y: number,
+  z: number,
+  length: number,
+  along: 'x' | 'z',
+  hex = LAMP,
+): Shape {
+  if (along === 'x') return shape.box(length, 0.03, 0.02, x, y, z, hex, { glow: true });
+  return shape.box(0.02, 0.03, length, x, y, z, hex, { glow: true });
 }
 
 function windows(
@@ -571,6 +685,9 @@ function accordHq(): Model {
     .cylinder(0.3, 0.3, 0.04, -1.2, 0.72, 1.2, '#4f5760', { sides: 12 })
     .box(0.3, 0.02, 0.06, -1.2, 0.75, 1.2, '#e8e8e8');
   windows(hull, -0.35, 0.4, 0.81, 6, 0.4, 'z');
+  rooftop(hull, -0.6, 0.73, -0.6, 1.6, 1.4, 1);
+  pipes(hull, 1.06, 0.55, -0.3, 1.6, 'z');
+  lightStrip(hull, -0.35, 0.62, 0.815, 2.6, 'x', ACCORD.glow);
   flag(hull, 1.65, 0.06, 1.65);
   return { parts: [part('hull', hull)] };
 }
@@ -588,6 +705,9 @@ function blocHq(): Model {
     .cylinder(0.12, 0.14, 0.9, -1.2, 1.4, -1.2, '#5a5a52')
     .box(0.6, 0.3, 0.6, 1.3, 0.2, 1.3, p.dark);
   windows(hull, -0.2, 0.42, 1.21, 7, 0.36, 'z');
+  rooftop(hull, -0.4, 1.18, -0.4, 1.8, 1.6, 2);
+  pipes(hull, 1.31, 0.5, -0.4, 2.2, 'z');
+  lightStrip(hull, -0.2, 0.6, 1.215, 2.8, 'x', BLOC.glow);
   flag(hull, 0.2, 1.18, 0.3, 0.6);
   return { parts: [part('hull', hull)] };
 }
@@ -627,6 +747,8 @@ function refinery(p: Palette): Model {
     .box(0.9, 0.035, 0.08, 0.0, 0.025, 1.52, '#d8b41c')
     .box(0.9, 0.035, 0.08, 0.0, 0.025, 2.38, '#d8b41c');
   windows(hull, 0.5, 0.45, 1.11, 3, 0.4, 'z');
+  pipes(hull, -0.3, 0.9, -0.85, 0.9, 'x');
+  rooftop(hull, 0.5, 0.77, 0.5, 1.3, 1.1, 3);
   return { parts: [part('hull', hull)] };
 }
 
@@ -667,6 +789,8 @@ function motorPool(): Model {
     .box(0.06, 0.66, 0.06, 0.65, 0.36, 0.91, T, { team: true })
     .box(0.06, 0.66, 0.06, -0.65, 0.36, 0.91, T, { team: true })
     .box(0.8, 0.02, 0.5, 0, 0.02, 1.2, '#4b4d50');
+  lightStrip(hull, 0, 0.8, 0.93, 1.3, 'x');
+  pipes(hull, 1.31, 0.45, -0.2, 2.0, 'z');
   return { parts: [part('hull', hull)] };
 }
 
@@ -682,6 +806,8 @@ function tankWorks(): Model {
     .cylinder(0.12, 0.14, 1.0, 1.1, 1.3, -1.0, '#5a5a52')
     .cylinder(0.12, 0.14, 0.8, 0.75, 1.2, -1.05, '#5a5a52')
     .box(0.8, 0.02, 0.5, 0, 0.02, 1.25, '#4b4d50');
+  lightStrip(hull, 0, 0.9, 0.98, 1.3, 'x', BLOC.glow);
+  pipes(hull, 1.36, 0.6, -0.2, 2.0, 'z');
   return { parts: [part('hull', hull)] };
 }
 
@@ -702,6 +828,8 @@ function airCommand(): Model {
       .box(0.08, 0.036, 0.5, x, 1.18, z, T, { team: true });
   }
   windows(hull, 0, 0.6, 1.41, 5, 0.45, 'z');
+  lightStrip(hull, 0, 0.95, 1.415, 2.6, 'x', ACCORD.glow);
+  pipes(hull, 1.41, 0.4, 0, 2.4, 'z');
   hull.dome(0.25, 1.3, 1.15, -1.3, p.glass);
   return { parts: [part('hull', hull)] };
 }
@@ -829,22 +957,56 @@ function flakCannon(): Model {
   return { parts: [part('hull', hull), part('turret', turret, [0, 0.3, 0])] };
 }
 
-function wall(accord: boolean): Model {
-  const hull = new Shape();
+const WALL = { accord: '#9a9c98', bloc: '#8a6a52' };
+
+/** A wall post: a round concrete pillar with a steel cap, or a brick pier. */
+function wallPost(shape: Shape, accord: boolean): Shape {
   if (accord) {
-    hull.box(0.96, 0.5, 0.96, 0, 0.25, 0, '#b9bab4').box(0.8, 0.06, 0.8, 0, 0.53, 0, '#a2a39d');
-  } else {
-    hull.box(0.96, 0.52, 0.96, 0, 0.26, 0, '#8a6a52');
-    for (const [x, z] of [
-      [-0.3, -0.3],
-      [0.3, -0.3],
-      [-0.3, 0.3],
-      [0.3, 0.3],
-    ] as const) {
-      hull.box(0.24, 0.12, 0.24, x, 0.58, z, '#7a5c46');
-    }
+    return shape
+      .cylinder(0.2, 0.23, 0.6, 0, 0.3, 0, WALL.accord, { sides: 10 })
+      .cylinder(0.215, 0.215, 0.06, 0, 0.5, 0, DARK, { sides: 10 })
+      .cylinder(0.2, 0.22, 0.04, 0, 0.62, 0, STEEL, { sides: 10 })
+      .dome(0.13, 0, 0.63, 0, DARK, { sides: 10, shine: 0.8 });
   }
+  return shape
+    .box(0.4, 0.66, 0.4, 0, 0.33, 0, WALL.bloc)
+    .box(0.46, 0.08, 0.46, 0, 0.7, 0, '#6e5442')
+    .box(0.41, 0.03, 0.41, 0, 0.2, 0, '#6e5442')
+    .box(0.41, 0.03, 0.41, 0, 0.42, 0, '#6e5442');
+}
+
+/** A wall section running from this post to the next one along +x. */
+function wallLink(shape: Shape, accord: boolean): Shape {
+  if (accord) {
+    return shape
+      .box(0.84, 0.46, 0.26, 0.5, 0.23, 0, WALL.accord)
+      .box(0.84, 0.05, 0.3, 0.5, 0.48, 0, STEEL)
+      .box(0.84, 0.04, 0.27, 0.5, 0.1, 0, DARK);
+  }
+  shape.box(0.8, 0.5, 0.3, 0.5, 0.25, 0, WALL.bloc).box(0.8, 0.05, 0.34, 0.5, 0.52, 0, '#6e5442');
+  for (const x of [0.3, 0.5, 0.7]) shape.box(0.1, 0.08, 0.3, x, 0.58, 0, WALL.bloc);
+  return shape;
+}
+
+/** For the build button: a short run of wall. */
+function wall(accord: boolean): Model {
+  const hull = wallLink(wallLink(wallPost(new Shape(), accord), accord), accord);
   return { parts: [part('hull', hull)] };
+}
+
+const wallCache = new Map<string, Model>();
+
+/** The pieces walls are drawn from in the field: a post per cell, links between neighbours. */
+export function wallPiece(type: StructureType, piece: 'post' | 'link'): Model {
+  const key = `${type}:${piece}`;
+  let model = wallCache.get(key);
+  if (!model) {
+    const accord = type === 'a_wall';
+    const shape = piece === 'post' ? wallPost(new Shape(), accord) : wallLink(new Shape(), accord);
+    model = { parts: [part('hull', shape)] };
+    wallCache.set(key, model);
+  }
+  return model;
 }
 
 function house(): Model {
@@ -1067,29 +1229,55 @@ export function treeGeometries(theme: Theme): THREE.BufferGeometry[] {
         .build(),
     ];
   }
-  const snow = theme === 'snow';
-  const needle = snow ? '#3f5f4c' : '#2f6b3a';
-  const cap = snow ? '#eef3f6' : needle;
+  const needle = theme === 'snow' ? '#3f5f4c' : '#2f6b3a';
+  const cap = '#eef3f6';
+  if (theme !== 'snow') {
+    const leafy = (seed: number, size: number) => {
+      const shape = new Shape()
+        .cylinder(0.05 * size, 0.08 * size, 0.5 * size, 0, 0.25 * size, 0, '#5e4630', { sides: 6 })
+        .cylinder(0.025, 0.035, 0.3 * size, 0.08, 0.45 * size, 0, '#5e4630', {
+          sides: 5,
+          rz: -0.6,
+        });
+      const greens = ['#3d7a2c', '#4f8f34', '#2f6524', '#5c9a3a'];
+      for (let i = 0; i < 6; i++) {
+        const angle = seed + i * 2.4;
+        const out = i === 0 ? 0 : 0.16 * size;
+        shape.sphere(
+          (0.2 + ((i * 7 + seed) % 3) * 0.04) * size,
+          Math.cos(angle) * out,
+          (0.62 + (i % 3) * 0.1) * size,
+          Math.sin(angle) * out,
+          greens[i % greens.length] ?? '#3d7a2c',
+          { detail: 1 },
+        );
+      }
+      return shape.build();
+    };
+    return [
+      leafy(0.3, 1),
+      leafy(1.7, 1.2),
+      new Shape()
+        .cylinder(0.04, 0.05, 0.3, 0, 0.15, 0, '#6b4a2e')
+        .cone(0.3, 0.5, 0, 0.5, 0, needle, { sides: 7 })
+        .cone(0.22, 0.4, 0, 0.78, 0, needle, { sides: 7 })
+        .build(),
+    ];
+  }
   return [
     new Shape()
       .cylinder(0.04, 0.05, 0.3, 0, 0.15, 0, '#6b4a2e')
       .cone(0.3, 0.5, 0, 0.5, 0, needle, { sides: 7 })
       .cone(0.22, 0.4, 0, 0.78, 0, cap, { sides: 7 })
       .build(),
-    snow
-      ? new Shape()
-          .cylinder(0.04, 0.05, 0.25, 0, 0.12, 0, '#6b4a2e')
-          .cone(0.26, 0.45, 0, 0.42, 0, needle, { sides: 6 })
-          .cone(0.18, 0.32, 0, 0.66, 0, cap, { sides: 6 })
-          .build()
-      : new Shape()
-          .cylinder(0.05, 0.06, 0.35, 0, 0.17, 0, '#6b4a2e')
-          .sphere(0.32, 0, 0.58, 0, '#3f8a3c', { detail: 0 })
-          .sphere(0.2, 0.12, 0.75, 0.05, '#4d9a45')
-          .build(),
+    new Shape()
+      .cylinder(0.04, 0.05, 0.25, 0, 0.12, 0, '#6b4a2e')
+      .cone(0.26, 0.45, 0, 0.42, 0, needle, { sides: 6 })
+      .cone(0.18, 0.32, 0, 0.66, 0, cap, { sides: 6 })
+      .build(),
     new Shape()
       .cylinder(0.05, 0.06, 0.3, 0, 0.15, 0, '#6b4a2e')
-      .sphere(0.3, 0, 0.5, 0, snow ? '#dfe8ee' : '#4a8f3a', { detail: 0 })
+      .sphere(0.3, 0, 0.5, 0, '#dfe8ee', { detail: 0 })
       .build(),
   ];
 }
@@ -1097,6 +1285,8 @@ export function treeGeometries(theme: Theme): THREE.BufferGeometry[] {
 export function oreGeometry(gem: boolean): THREE.BufferGeometry {
   const color = gem ? '#b16bff' : '#e8c34a';
   const light = gem ? '#6fd7ff' : '#f6dc7a';
+  setFinish(color, { shine: 0.9 });
+  setFinish(light, { shine: 1 });
   return new Shape()
     .crystal(0.14, -0.12, 0.1, -0.08, color, { sy: 1.6, rz: 0.2 })
     .crystal(0.11, 0.14, 0.08, 0.06, light, { sy: 1.5, rx: 0.3 })

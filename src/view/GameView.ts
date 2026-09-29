@@ -5,7 +5,8 @@ import { UNITS, WEAPONS, type UnitType, type WeaponId } from '../sim/rules';
 import type { GameEvent, Vec3, World } from '../sim/world';
 import { ModelBatches } from './batches';
 import { Decals, Particles, Streaks, type Rgba } from './effects';
-import { crateGeometry, structureModel, unitModel, type PartName } from './models';
+import { battlefieldEnvironment } from './environment';
+import { crateGeometry, structureModel, unitModel, wallPiece, type PartName } from './models';
 import { Shape, teamMaterial } from './shapes';
 import { ShroudLayer, Terrain, WATER_LEVEL } from './terrain';
 
@@ -77,6 +78,7 @@ export class GameView {
   private readonly burnt = new THREE.Color('#2a2622');
   private time = 0;
   private readonly base = new THREE.Matrix4();
+  private readonly link = new THREE.Matrix4();
   private readonly quaternion = new THREE.Quaternion();
   private readonly position = new THREE.Vector3();
   private readonly scale = new THREE.Vector3();
@@ -93,9 +95,13 @@ export class GameView {
     });
     this.renderer.shadowMap.enabled = true;
     this.renderer.shadowMap.type = THREE.PCFShadowMap;
+    this.renderer.toneMapping = THREE.NeutralToneMapping;
+    this.renderer.toneMappingExposure = 1;
     this.scene.background = new THREE.Color('#0b0d10');
-    this.scene.add(new THREE.HemisphereLight('#dfefff', '#4a4636', 1.7));
-    this.sun = new THREE.DirectionalLight('#fff1d6', 2.4);
+    this.scene.environment = battlefieldEnvironment(this.renderer);
+    this.scene.environmentIntensity = 0.7;
+    this.scene.add(new THREE.HemisphereLight('#d8e8ff', '#4a4232', 0.7));
+    this.sun = new THREE.DirectionalLight('#fff0d8', 3.4);
     this.sun.castShadow = true;
     this.sun.shadow.mapSize.set(2048, 2048);
     this.sun.shadow.bias = -0.0008;
@@ -558,7 +564,12 @@ export class GameView {
             ? 0.45
             : 0.35;
     this.explosion(at, size);
-    if (size >= 1 && at.y < 0.5) this.scorch(at.x, at.z, size * 1.4);
+    if (at.y < 0.5) {
+      // Bombs and artillery always crater the ground; tank shells now and then.
+      if (size >= 1) this.crater(at.x, at.z, size * 1.2);
+      else if (weapon.projectile === 'shell' && Math.random() < 0.3)
+        this.crater(at.x + rand(0.3), at.z + rand(0.3), 0.55 + Math.random() * 0.2);
+    }
   }
 
   /** Dark clouds churning over the storm's area while it lasts. */
@@ -605,7 +616,7 @@ export class GameView {
     }
     this.fire.emit(x, 0.3, z, 0, 0, 0, 0.2, 2.4, 0.4, [0.8, 0.9, 1, 1], [0.3, 0.4, 1, 0]);
     this.sparks({ x, y: 0.1, z }, 10, 3);
-    this.scorch(x, z, 0.9);
+    this.crater(x, z, 0.9);
   }
 
   /** The missile climbs out of its silo, then drops on the target just before it lands. */
@@ -793,6 +804,14 @@ export class GameView {
   }
 
   /** A burn mark, on dry land only. */
+  /** Heavy shells leave craters; everything else scorches. */
+  private crater(x: number, z: number, size: number): void {
+    const map = this.world.map;
+    const cell = map.cellAt(x, z);
+    if (map.isWater(cell) || this.world.structureAt(x, z)) return;
+    this.decals.addCrater(x, z, size);
+  }
+
   private scorch(x: number, z: number, size: number): void {
     const map = this.world.map;
     if (!map.isWater(map.cellAt(x, z))) this.decals.addScorch(x, z, size);
@@ -937,6 +956,11 @@ export class GameView {
       this.base.makeScale(1, eased, 1).setPosition(structure.cx, 0, structure.cz);
       const player = this.world.players[structure.owner];
       const powered = !structure.def.needsPower || !player?.lowPower;
+      if (structure.def.role === 'wall') {
+        this.drawWall(structure);
+        this.structureEffects(structure, dt);
+        continue;
+      }
       const turret = structure.turret;
       const recoil = structure.sinceFired < 0.15 ? (0.15 - structure.sinceFired) * 0.3 : 0;
       batches.draw(
@@ -955,6 +979,27 @@ export class GameView {
       this.structureEffects(structure, dt);
     }
     batches.end();
+  }
+
+  /** A wall post, joined to the next wall along +x and +z when there is one. */
+  private drawWall(structure: Structure): void {
+    const color = this.teamColor(structure.owner);
+    const type = structure.type;
+    this.structures.draw(`${type}:post`, () => wallPiece(type, 'post'), this.base, color);
+    for (const [dx, dz, angle] of [
+      [1, 0, 0],
+      [0, 1, -Math.PI / 2],
+    ] as const) {
+      const next = this.world.structureAt(structure.x + dx, structure.z + dz);
+      if (next?.def.role !== 'wall' || next.owner !== structure.owner) continue;
+      if (!this.structureVisible(next)) continue;
+      const rise = Math.min(structure.built, next.built);
+      this.link
+        .makeRotationY(angle)
+        .premultiply(scratch.makeScale(1, Math.max(0.03, rise), 1))
+        .setPosition(structure.cx, 0, structure.cz);
+      this.structures.draw(`${type}:link`, () => wallPiece(type, 'link'), this.link, color);
+    }
   }
 
   private structureEffects(structure: Structure, dt: number): void {

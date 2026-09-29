@@ -4,6 +4,12 @@
   --side-edge: #3a4654;
   --accent: #4a90e2;
   --accent-soft: rgb(74 144 226 / 0.25);
+  --chrome-hi: #d9e1ea;
+  --chrome-mid: #7d8a99;
+  --chrome-lo: #303946;
+  --gem-hi: #4fa2ff;
+  --gem-lo: #1a4fb8;
+  --gem-dim: #0d2250;
   position: relative;
   display: grid;
   grid-template-columns: minmax(0, 1fr) 13.5rem;
@@ -23,6 +29,12 @@
   --side-edge: #5a3a30;
   --accent: #e0452c;
   --accent-soft: rgb(224 69 44 / 0.25);
+  --chrome-hi: #e2cfc6;
+  --chrome-mid: #8f6f63;
+  --chrome-lo: #3a2520;
+  --gem-hi: #ff6a4a;
+  --gem-lo: #b8261a;
+  --gem-dim: #4d0e0a;
 }
 
 .match button {
@@ -120,15 +132,35 @@
 
 /* Sidebar ------------------------------------------------------------------------------------ */
 
+/*
+ * Polished chrome: brushed metal lit from the left, bevelled frames round every panel,
+ * a column of bolts down the edge, glossy gem buttons and a segmented power meter.
+ */
 .sidebar {
+  position: relative;
   display: flex;
   flex-direction: column;
   min-height: 0;
+  padding-right: 0.55rem;
   background:
-    repeating-linear-gradient(0deg, rgb(255 255 255 / 0.015) 0 2px, transparent 2px 4px),
-    linear-gradient(180deg, var(--side), var(--side-dark));
-  border-left: 2px solid var(--side-edge);
-  box-shadow: inset 1px 0 0 rgb(255 255 255 / 0.06);
+    radial-gradient(circle at 50% 50%, #f4f8fb 0 1px, #9aa6b2 2px, #3c4652 4px, transparent 5px)
+      right 0.1rem top 0.6rem / 0.6rem 2.6rem repeat-y,
+    linear-gradient(90deg, transparent calc(100% - 0.7rem), rgb(0 0 0 / 0.45) calc(100% - 0.7rem))
+      no-repeat,
+    repeating-linear-gradient(0deg, rgb(255 255 255 / 0.025) 0 1px, transparent 1px 3px),
+    linear-gradient(
+      90deg,
+      var(--chrome-lo) 0%,
+      var(--chrome-hi) 14%,
+      var(--chrome-mid) 36%,
+      var(--chrome-lo) 70%,
+      var(--chrome-mid) 88%,
+      var(--chrome-lo) 100%
+    );
+  border-left: 2px solid #000;
+  box-shadow:
+    inset 2px 0 0 rgb(255 255 255 / 0.28),
+    inset -1px 0 0 rgb(0 0 0 / 0.6);
 }
 
 .sideTop {
@@ -141,30 +173,46 @@
   display: inline-flex;
   align-items: center;
   gap: 0.35rem;
-  padding: 0.3rem 0.6rem;
-  border-radius: 0.25rem;
-  background: rgb(0 0 0 / 0.35);
-  border: 1px solid var(--side-edge);
-  font-size: 0.75rem;
-  font-weight: 700;
+  padding: 0.28rem 0.7rem;
+  border-radius: 1rem;
+  background:
+    linear-gradient(180deg, rgb(255 255 255 / 0.45), rgb(255 255 255 / 0) 55%),
+    linear-gradient(180deg, var(--gem-hi), var(--gem-lo));
+  border: 1px solid #000;
+  box-shadow:
+    inset 0 1px 0 rgb(255 255 255 / 0.5),
+    0 1px 0 rgb(255 255 255 / 0.25);
+  font-size: 0.72rem;
+  font-weight: 800;
   letter-spacing: 0.08em;
   text-transform: uppercase;
+  text-shadow: 0 1px 1px #000;
 }
 
 .menuButton:hover {
-  background: rgb(255 255 255 / 0.08);
+  filter: brightness(1.2);
+}
+
+/* A bevelled chrome frame, shared by the radar, readouts and build panel. */
+.radar,
+.creditsValue,
+.power,
+.cameos,
+.info {
+  border: 1px solid #000;
+  box-shadow:
+    0 0 0 2px var(--chrome-mid),
+    0 0 0 3px #000,
+    1px 1px 0 3px rgb(255 255 255 / 0.35),
+    inset 0 0 0.8rem rgb(0 0 0 / 0.8);
 }
 
 .radar {
   position: relative;
-  margin: 0.4rem;
+  margin: 0.55rem 0.55rem 0.6rem;
   aspect-ratio: 1;
-  border: 2px solid var(--side-edge);
-  border-radius: 0.3rem;
+  border-radius: 0.5rem;
   background: #030405;
-  box-shadow:
-    inset 0 0 1.2rem rgb(0 0 0 / 0.9),
-    0 0 0 1px #000;
   overflow: hidden;
 }
 
@@ -192,41 +240,54 @@
 .bank {
   display: flex;
   align-items: center;
-  gap: 0.3rem;
-  margin: 0 0.4rem 0.4rem;
+  gap: 0.35rem;
+  margin: 0 0.55rem 0.55rem;
 }
 
 .creditsValue {
   flex: 1;
-  padding: 0.25rem 0.4rem;
-  border-radius: 0.2rem;
-  background: #050607;
-  border: 1px solid var(--side-edge);
+  padding: 0.22rem 0.4rem;
+  border-radius: 0.3rem;
+  background: linear-gradient(180deg, #020303, #0c1110);
   font-family: ui-monospace, 'Cascadia Mono', Consolas, monospace;
   font-size: 0.95rem;
   font-weight: 700;
   color: #ffd35a;
   text-align: center;
+  text-shadow: 0 0 6px rgb(255 190 60 / 0.7);
   font-variant-numeric: tabular-nums;
 }
 
+/* Glossy oval buttons: repair and sell. */
 .modeButton {
-  width: 2rem;
-  height: 1.9rem;
+  width: 2.2rem;
+  height: 1.8rem;
   display: grid;
   place-items: center;
-  border-radius: 0.2rem;
-  background: rgb(0 0 0 / 0.35);
-  border: 1px solid var(--side-edge);
+  border-radius: 50%;
+  background:
+    radial-gradient(ellipse 70% 45% at 50% 22%, rgb(255 255 255 / 0.65), transparent 70%),
+    radial-gradient(circle at 50% 70%, var(--gem-hi), var(--gem-lo) 75%);
+  border: 1px solid #000;
+  box-shadow:
+    0 0 0 2px var(--chrome-mid),
+    0 0 0 3px #000,
+    inset 0 -2px 4px rgb(0 0 0 / 0.5);
+  filter: drop-shadow(0 0 0 transparent);
+}
+
+.modeButton svg {
+  filter: drop-shadow(0 1px 1px #000);
 }
 
 .modeButton:hover {
-  background: rgb(255 255 255 / 0.08);
+  filter: brightness(1.2);
 }
 
 .modeButton[aria-pressed='true'] {
-  background: var(--accent-soft);
-  border-color: var(--accent);
+  background:
+    radial-gradient(ellipse 70% 45% at 50% 22%, rgb(255 255 255 / 0.65), transparent 70%),
+    radial-gradient(circle at 50% 70%, #ffe27a, #b07a10 75%);
   color: #fff;
 }
 
@@ -234,34 +295,39 @@
   flex: 1;
   min-height: 0;
   display: flex;
-  gap: 0.3rem;
-  padding: 0 0.4rem;
+  gap: 0.55rem;
+  padding: 0 0.55rem;
 }
 
+/* The power meter: a column of LEDs, lit green up to the power made, dark red above. */
 .power {
   position: relative;
-  width: 0.55rem;
-  border-radius: 0.2rem;
-  background: #050607;
-  border: 1px solid var(--side-edge);
+  width: 0.6rem;
+  border-radius: 0.3rem;
+  background:
+    repeating-linear-gradient(0deg, #3a0c0a 0 3px, #080202 3px 5px) padding-box,
+    #080202;
   overflow: hidden;
 }
 
 .powerFill {
   position: absolute;
-  left: 0;
-  right: 0;
+  left: 1px;
+  right: 1px;
   bottom: 0;
-  background: linear-gradient(0deg, #1f8f3a, #56e06d);
+  background: repeating-linear-gradient(0deg, #53ff72 0 3px, transparent 3px 5px);
+  filter: drop-shadow(0 0 2px rgb(80 255 110 / 0.9));
   transition: height 0.4s;
 }
 
 .power[data-state='tight'] .powerFill {
-  background: linear-gradient(0deg, #9a7d12, #f2d23a);
+  background: repeating-linear-gradient(0deg, #ffe04a 0 3px, transparent 3px 5px);
+  filter: drop-shadow(0 0 2px rgb(255 220 70 / 0.9));
 }
 
 .power[data-state='low'] .powerFill {
-  background: linear-gradient(0deg, #8a1d14, #ff5a3d);
+  background: repeating-linear-gradient(0deg, #ff4a32 0 3px, transparent 3px 5px);
+  filter: drop-shadow(0 0 2px rgb(255 80 50 / 0.9));
   animation: flash 0.8s steps(2) infinite;
 }
 
@@ -273,11 +339,11 @@
 
 .powerUse {
   position: absolute;
-  left: -1px;
-  right: -1px;
+  left: 0;
+  right: 0;
   height: 2px;
   background: #fff;
-  box-shadow: 0 0 3px #000;
+  box-shadow: 0 0 4px #fff;
   transition: bottom 0.4s;
 }
 
@@ -289,22 +355,33 @@
   min-height: 0;
 }
 
+/* Build tabs: glossy gem buttons. */
 .tabs {
   display: grid;
   grid-template-columns: repeat(4, 1fr);
-  gap: 0.2rem;
-  margin-bottom: 0.3rem;
+  gap: 0.25rem;
+  margin-bottom: 0.55rem;
 }
 
 .tab {
   position: relative;
-  height: 2rem;
+  height: 2.1rem;
   display: grid;
   place-items: center;
-  border-radius: 0.2rem 0.2rem 0 0;
-  background: rgb(0 0 0 / 0.4);
-  border: 1px solid var(--side-edge);
-  color: #aab4be;
+  border-radius: 0.45rem;
+  background:
+    linear-gradient(180deg, rgb(255 255 255 / 0.5), rgb(255 255 255 / 0.05) 48%, transparent 52%),
+    linear-gradient(180deg, var(--gem-lo), var(--gem-dim));
+  border: 1px solid #000;
+  box-shadow:
+    0 0 0 1px var(--chrome-mid),
+    0 0 0 2px #000,
+    inset 0 -3px 5px rgb(0 0 0 / 0.45);
+  color: rgb(255 255 255 / 0.65);
+}
+
+.tab svg {
+  filter: drop-shadow(0 1px 1px #000);
 }
 
 .tab:hover {
@@ -312,8 +389,14 @@
 }
 
 .tab[aria-selected='true'] {
-  background: var(--accent-soft);
-  border-color: var(--accent);
+  background:
+    linear-gradient(180deg, rgb(255 255 255 / 0.6), rgb(255 255 255 / 0.1) 48%, transparent 52%),
+    linear-gradient(180deg, var(--gem-hi), var(--gem-lo));
+  box-shadow:
+    0 0 0 1px var(--chrome-mid),
+    0 0 0 2px #000,
+    0 0 0.6rem var(--gem-hi),
+    inset 0 -3px 5px rgb(0 0 0 / 0.35);
   color: #fff;
 }
 
@@ -326,6 +409,7 @@
   height: 0.4rem;
   border-radius: 50%;
   background: #56e06d;
+  box-shadow: 0 0 4px #56e06d;
   animation: flash 0.8s steps(2) infinite;
 }
 
@@ -336,8 +420,10 @@
   display: grid;
   grid-template-columns: repeat(2, 1fr);
   grid-auto-rows: max-content;
-  gap: 0.25rem;
-  padding-bottom: 0.3rem;
+  gap: 0.3rem;
+  padding: 0.3rem;
+  border-radius: 0.3rem;
+  background: #07090b;
   scrollbar-width: thin;
 }
 
@@ -350,15 +436,18 @@
   font-weight: 400;
 }
 
+/* Build pictures, each in a thin chrome frame. */
 .cameo {
   position: relative;
   aspect-ratio: 4 / 3;
   padding: 0;
   border: 1px solid #000;
-  border-radius: 0.15rem;
+  border-radius: 0.2rem;
   overflow: hidden;
   background: #0b0e11;
-  box-shadow: inset 0 0 0 1px rgb(255 255 255 / 0.08);
+  box-shadow:
+    0 0 0 1px rgb(255 255 255 / 0.35),
+    inset 0 0 0 1px rgb(255 255 255 / 0.15);
 }
 
 .cameo img,
@@ -371,7 +460,9 @@
 }
 
 .cameo:hover:not(:disabled) {
-  box-shadow: inset 0 0 0 1px #ffd66b;
+  box-shadow:
+    0 0 0 1px #ffd66b,
+    inset 0 0 0 1px #ffd66b;
 }
 
 .cameo:disabled {
@@ -385,14 +476,16 @@
   right: 0;
   bottom: 0;
   padding: 0.05rem 0.2rem;
-  background: rgb(0 0 0 / 0.65);
-  font-size: 0.6rem;
-  font-weight: 700;
-  line-height: 1.3;
-  text-align: left;
+  background: linear-gradient(180deg, transparent, rgb(0 0 0 / 0.85) 40%);
+  font-size: 0.52rem;
+  font-weight: 800;
+  line-height: 1.35;
+  text-align: center;
+  text-transform: uppercase;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+  text-shadow: 0 1px 1px #000;
 }
 
 /* The unbuilt part of the picture is darkened, like a clock hand sweeping round. */
@@ -441,11 +534,10 @@
 
 .info {
   min-height: 5.6rem;
-  margin: 0.3rem 0.4rem 0.4rem;
+  margin: 0.6rem 0.55rem 0.55rem;
   padding: 0.4rem 0.5rem;
-  border-radius: 0.25rem;
-  background: rgb(0 0 0 / 0.4);
-  border: 1px solid var(--side-edge);
+  border-radius: 0.3rem;
+  background: linear-gradient(180deg, #050607, #0d1114);
   font-size: 0.72rem;
   line-height: 1.35;
 }
