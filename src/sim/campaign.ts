@@ -13,22 +13,57 @@ const ORANGE = '#ec7a1c';
 const accordYou: MissionSide = { name: 'You', faction: 'accord', color: BLUE, team: 1, ai: null };
 const blocYou: MissionSide = { name: 'You', faction: 'bloc', color: RED, team: 1, ai: null };
 
-function blocEnemy(ai: 'easy' | 'normal' | 'hard', builds: boolean, attacks: boolean): MissionSide {
-  return { name: 'Bloc forces', faction: 'bloc', color: ORANGE, team: 2, ai, builds, attacks };
+/** How a mission's enemy starts: its credits and when it may first attack. */
+interface Pace {
+  credits?: number;
+  firstAttack?: number;
+}
+
+function blocEnemy(
+  ai: 'easy' | 'normal' | 'hard',
+  builds: boolean,
+  attacks: boolean,
+  pace: Pace = {},
+): MissionSide {
+  return {
+    name: 'Bloc forces',
+    faction: 'bloc',
+    color: ORANGE,
+    team: 2,
+    ai,
+    builds,
+    attacks,
+    ...pace,
+  };
 }
 
 function accordEnemy(
   ai: 'easy' | 'normal' | 'hard',
   builds: boolean,
   attacks: boolean,
+  pace: Pace = {},
 ): MissionSide {
-  return { name: 'Accord forces', faction: 'accord', color: BLUE, team: 2, ai, builds, attacks };
+  return {
+    name: 'Accord forces',
+    faction: 'accord',
+    color: BLUE,
+    team: 2,
+    ai,
+    builds,
+    attacks,
+    ...pace,
+  };
 }
 
 type Placed = MissionDef['structures'][number];
 
 function at(type: StructureType, owner: number, x: number, z: number, tag?: string): Placed {
   return tag ? { type, owner, x, z, tag } : { type, owner, x, z };
+}
+
+/** A superweapon that starts `delay` of its charge behind, so you have time to build up. */
+function slow(placed: Placed, delay: number): Placed {
+  return { ...placed, charge: -delay };
 }
 
 function squad(type: UnitType, owner: number, x: number, z: number, count = 1) {
@@ -227,7 +262,7 @@ export const MISSIONS: MissionDef[] = [
         { kind: 'rocks', at: [50, 38], r: 2 },
       ],
     },
-    credits: 5000,
+    credits: 3500,
     sides: [accordYou, blocEnemy('normal', false, false)],
     structures: [
       at('a_hq', 0, 34, 46, 'hq'),
@@ -269,7 +304,7 @@ export const MISSIONS: MissionDef[] = [
         at: 150,
         kind: 'reinforce',
         owner: 1,
-        units: ['draftee', 'draftee', 'flakgunner', 'flakgunner', 'bear', 'bear'],
+        units: ['draftee', 'draftee', 'draftee', 'draftee', 'flakgunner', 'bear', 'bear', 'bear'],
         x: 69,
         z: 38,
         attack: { x: 36, z: 47 },
@@ -279,7 +314,7 @@ export const MISSIONS: MissionDef[] = [
         at: 240,
         kind: 'reinforce',
         owner: 1,
-        units: ['bear', 'bear', 'bear', 'rockettruck'],
+        units: ['bear', 'bear', 'bear', 'bear', 'rockettruck', 'rockettruck'],
         x: 36,
         z: 3,
         attack: { x: 35, z: 45 },
@@ -289,7 +324,17 @@ export const MISSIONS: MissionDef[] = [
         at: 330,
         kind: 'reinforce',
         owner: 1,
-        units: ['draftee', 'draftee', 'draftee', 'draftee', 'torch', 'torch'],
+        units: [
+          'draftee',
+          'draftee',
+          'draftee',
+          'draftee',
+          'draftee',
+          'torch',
+          'torch',
+          'torch',
+          'bear',
+        ],
         x: 2,
         z: 38,
         attack: { x: 33, z: 47 },
@@ -299,7 +344,7 @@ export const MISSIONS: MissionDef[] = [
         at: 400,
         kind: 'reinforce',
         owner: 1,
-        units: ['dirigible'],
+        units: ['dirigible', 'dirigible'],
         x: 69,
         z: 3,
         attack: { x: 36, z: 48 },
@@ -309,7 +354,20 @@ export const MISSIONS: MissionDef[] = [
         at: 470,
         kind: 'reinforce',
         owner: 1,
-        units: ['bear', 'bear', 'bear', 'bear', 'flaktruck', 'draftee', 'draftee', 'draftee'],
+        units: [
+          'bear',
+          'bear',
+          'bear',
+          'bear',
+          'bear',
+          'bear',
+          'flaktruck',
+          'rockettruck',
+          'draftee',
+          'draftee',
+          'draftee',
+          'draftee',
+        ],
         x: 36,
         z: 3,
         attack: { x: 35, z: 45 },
@@ -319,7 +377,7 @@ export const MISSIONS: MissionDef[] = [
         at: 540,
         kind: 'reinforce',
         owner: 1,
-        units: ['behemoth', 'bear', 'bear', 'rockettruck', 'rockettruck'],
+        units: ['behemoth', 'behemoth', 'bear', 'bear', 'bear', 'rockettruck', 'rockettruck'],
         x: 69,
         z: 38,
         attack: { x: 36, z: 47 },
@@ -376,7 +434,7 @@ export const MISSIONS: MissionDef[] = [
       ],
     },
     credits: 10000,
-    sides: [accordYou, blocEnemy('hard', true, true)],
+    sides: [accordYou, blocEnemy('easy', true, true, { credits: 3000, firstAttack: 540 })],
     structures: [
       at('b_hq', 1, 82, 32),
       at('b_reactor', 1, 87, 30),
@@ -386,7 +444,7 @@ export const MISSIONS: MissionDef[] = [
       at('b_barracks', 1, 79, 30),
       at('b_factory', 1, 83, 38),
       at('b_radar', 1, 90, 38),
-      at('b_silo', 1, 86, 22, 'silo'),
+      slow(at('b_silo', 1, 86, 22, 'silo'), 0.5),
       at('b_nest', 1, 76, 34),
       at('b_bastion', 1, 76, 38),
       at('b_bastion', 1, 80, 26),
@@ -406,7 +464,7 @@ export const MISSIONS: MissionDef[] = [
     ],
     events: [
       { at: 3, kind: 'message', text: 'Deploy and build up. The Hellfire Silo is across the bay.' },
-      { at: 420, kind: 'message', text: 'Their missile is charging. Don’t bunch your base up.' },
+      { at: 540, kind: 'message', text: 'Their missile is charging. Don’t bunch your base up.' },
     ],
     superweapons: true,
     camera: { x: 14, z: 34 },
@@ -457,22 +515,28 @@ export const MISSIONS: MissionDef[] = [
     structures: [
       at('a_power', 1, 52, 3),
       at('a_power', 1, 55, 3),
+      at('a_power', 1, 58, 3),
       at('a_hq', 1, 56, 8),
       at('a_barracks', 1, 48, 6),
       at('a_refinery', 1, 51, 10),
       at('a_beamtower', 1, 45, 12),
       at('a_beamtower', 1, 49, 15),
+      at('a_beamtower', 1, 54, 17),
+      at('a_beamtower', 1, 41, 8),
       at('a_pillbox', 1, 44, 9),
       at('a_pillbox', 1, 46, 15),
       at('a_pillbox', 1, 53, 16),
+      at('a_pillbox', 1, 42, 13),
+      at('a_pillbox', 1, 57, 15),
     ],
     units: [
       squad('bear', 0, 12, 54, 5),
       squad('draftee', 0, 15, 57, 8),
       squad('flaktruck', 0, 9, 56, 2),
       squad('rockettruck', 0, 10, 59, 2),
-      squad('lancer', 1, 47, 19, 3),
-      squad('rifleman', 1, 50, 18, 6),
+      squad('lancer', 1, 47, 19, 5),
+      squad('rifleman', 1, 50, 18, 8),
+      squad('striker', 1, 52, 13, 2),
     ],
     objectives: [
       { kind: 'destroyAll', owner: 1, text: 'Destroy every building at the border post.' },
@@ -496,7 +560,7 @@ export const MISSIONS: MissionDef[] = [
         at: 240,
         kind: 'reinforce',
         owner: 1,
-        units: ['lancer', 'lancer', 'striker'],
+        units: ['lancer', 'lancer', 'lancer', 'lancer', 'striker', 'striker'],
         x: 62,
         z: 2,
         attack: { x: 20, z: 48 },
@@ -551,7 +615,7 @@ export const MISSIONS: MissionDef[] = [
       ],
     },
     credits: 8000,
-    sides: [blocYou, accordEnemy('normal', true, true)],
+    sides: [blocYou, accordEnemy('easy', true, true, { credits: 2000, firstAttack: 540 })],
     structures: [
       at('b_hq', 0, 12, 56, 'hq'),
       at('b_reactor', 0, 17, 56),
@@ -637,7 +701,7 @@ export const MISSIONS: MissionDef[] = [
       ],
     },
     credits: 10000,
-    sides: [blocYou, accordEnemy('hard', true, true)],
+    sides: [blocYou, accordEnemy('normal', true, true, { credits: 3000, firstAttack: 540 })],
     structures: [
       at('a_hq', 1, 82, 30),
       at('a_power', 1, 87, 26),
@@ -649,7 +713,7 @@ export const MISSIONS: MissionDef[] = [
       at('a_factory', 1, 82, 36),
       at('a_aircommand', 1, 88, 36),
       at('a_lab', 1, 90, 30),
-      at('a_storm', 1, 86, 18, 'storm'),
+      slow(at('a_storm', 1, 86, 18, 'storm'), 0.5),
       at('a_beamtower', 1, 75, 30),
       at('a_beamtower', 1, 76, 36),
       at('a_pillbox', 1, 75, 26),

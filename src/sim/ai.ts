@@ -189,6 +189,7 @@ export class AiBrain {
   /** Campaign missions can stop a computer player building or attacking. */
   private builds = true;
   private attacks = true;
+  private firstAttack: number;
 
   constructor(world: World, player: Player) {
     this.world = world;
@@ -196,11 +197,13 @@ export class AiBrain {
     this.tuning = TUNING[player.ai ?? 'normal'];
     this.rng = new Random(world.settings.seed * 97 + player.index * 13 + 5);
     this.timer = 0.5 + player.index * 0.13;
+    this.firstAttack = this.tuning.firstAttack;
   }
 
-  configure(options: { builds: boolean; attacks: boolean }): void {
+  configure(options: { builds: boolean; attacks: boolean; firstAttack?: number }): void {
     this.builds = options.builds;
     this.attacks = options.attacks;
+    if (options.firstAttack !== undefined) this.firstAttack = options.firstAttack;
   }
 
   update(): void {
@@ -510,7 +513,7 @@ export class AiBrain {
       this.attacks &&
       !threat &&
       enemy &&
-      world.time >= this.tuning.firstAttack &&
+      world.time >= this.firstAttack &&
       (value >= needed || defenceless) &&
       strongEnough &&
       this.attackers.size < 4

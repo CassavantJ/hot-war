@@ -38,6 +38,10 @@ export interface MissionSide {
   ai: Difficulty | null;
   builds?: boolean;
   attacks?: boolean;
+  /** A computer player's starting credits (10,000 if missing). */
+  credits?: number;
+  /** When a computer player may launch its first attack, in seconds. */
+  firstAttack?: number;
 }
 
 export interface MissionDef {
@@ -50,7 +54,15 @@ export interface MissionDef {
   credits: number;
   /** Index 0 is you. */
   sides: MissionSide[];
-  structures: { type: StructureType; owner: number; x: number; z: number; tag?: string }[];
+  structures: {
+    type: StructureType;
+    owner: number;
+    x: number;
+    z: number;
+    tag?: string;
+    /** A superweapon's starting charge; below 0 holds it back for longer. */
+    charge?: number;
+  }[];
   units: { type: UnitType; owner: number; x: number; z: number; count?: number; tag?: string }[];
   objectives: Objective[];
   events: MissionEvent[];
@@ -84,7 +96,7 @@ export function createMission(def: MissionDef, seed = 1): World {
         team: side.team,
         ai: side.ai,
         start: map.starts[index] ?? { x: Math.floor(def.camera.x), z: Math.floor(def.camera.z) },
-        credits: index === 0 ? def.credits : 10_000,
+        credits: index === 0 ? def.credits : (side.credits ?? 10_000),
         cells: map.width * map.height,
       }),
   );
@@ -106,7 +118,11 @@ export function createMission(def: MissionDef, seed = 1): World {
   });
   for (const brain of world.brains) {
     const side = def.sides[brain.player.index];
-    brain.configure({ builds: side?.builds ?? true, attacks: side?.attacks ?? true });
+    brain.configure({
+      builds: side?.builds ?? true,
+      attacks: side?.attacks ?? true,
+      ...(side?.firstAttack === undefined ? {} : { firstAttack: side.firstAttack }),
+    });
   }
   for (const neutral of neutrals) world.addStructure(neutral.type, -1, neutral.x, neutral.z, true);
   const tags = new Map<string, number>();
@@ -114,6 +130,7 @@ export function createMission(def: MissionDef, seed = 1): World {
     clearGround(map, spec.x, spec.z, STRUCTURES[spec.type].size);
     const structure = world.addStructure(spec.type, spec.owner, spec.x, spec.z, true);
     if (spec.tag) tags.set(spec.tag, structure.id);
+    if (spec.charge !== undefined) structure.superCharge = spec.charge;
     const owner = world.players[spec.owner];
     if (owner && structure.def.role === 'refinery') spawnHarvester(world, owner, structure);
   }
