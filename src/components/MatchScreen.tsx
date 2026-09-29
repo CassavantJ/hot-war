@@ -37,6 +37,7 @@ export function MatchScreen({ source, speed, onRestart, onNext, onQuit }: Props)
   const [volume, setVolume] = useState(audio.volume);
   const [music, setMusic] = useState(audio.musicVolume);
   const [voice, setVoice] = useState(audio.voice);
+  const [replies, setReplies] = useState(audio.replies);
   useSyncExternalStore(match.subscribe, match.getVersion);
 
   useEffect(() => {
@@ -71,7 +72,8 @@ export function MatchScreen({ source, speed, onRestart, onNext, onQuit }: Props)
     audio.setVolume(volume);
     audio.setMusicVolume(music);
     audio.setVoice(voice);
-  }, [audio, volume, music, voice]);
+    audio.setReplies(replies);
+  }, [audio, volume, music, voice, replies]);
 
   const outcome = match.world.outcome;
   useEffect(() => {
@@ -208,6 +210,16 @@ export function MatchScreen({ source, speed, onRestart, onNext, onQuit }: Props)
                   }}
                 />
                 <span>Announcer voice</span>
+              </label>
+              <label className={styles.checkRow}>
+                <input
+                  type="checkbox"
+                  checked={replies}
+                  onChange={(event) => {
+                    setReplies(event.target.checked);
+                  }}
+                />
+                <span>Unit voices</span>
               </label>
             </div>
           </div>

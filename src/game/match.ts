@@ -8,6 +8,7 @@ import { drawHud } from '../view/hud';
 import { Audio, type Effect } from './audio';
 import { Controller } from './controller';
 import { bindInput } from './input';
+import { replyFor, type ReplyKind } from './voices';
 
 export interface Message {
   id: number;
@@ -80,6 +81,7 @@ export class Match {
     const controller = new Controller(this.world, view, this.world.local);
     controller.onCue = (cue) => {
       this.audio.play(cue);
+      if (cue === 'select' || cue === 'move' || cue === 'attack') this.answer(cue);
     };
     controller.onTab = this.tabHandler;
     controller.onMenu = this.menuHandler;
@@ -93,6 +95,16 @@ export class Match {
     this.frame = requestAnimationFrame(this.loop);
     this.notify();
     if (import.meta.env.DEV) (window as unknown as { hotwar?: Match }).hotwar = this;
+  }
+
+  /** The most senior unit in the selection answers the order. */
+  private answer(kind: ReplyKind): void {
+    const units = this.controller?.selectedUnits() ?? [];
+    let lead = units[0];
+    for (const unit of units) if (lead && unit.def.cost > lead.def.cost) lead = unit;
+    const player = lead ? this.world.players[lead.owner] : undefined;
+    if (!lead || !player) return;
+    this.audio.reply(replyFor(lead.type, player.faction, kind));
   }
 
   detach(): void {

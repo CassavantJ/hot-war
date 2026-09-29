@@ -1,5 +1,6 @@
 import type { SoundId } from '../sim/rules';
 import { Music } from './music';
+import type { Reply } from './voices';
 
 export type Effect =
   | SoundId
@@ -17,7 +18,8 @@ export type Effect =
   | 'attack'
   | 'error'
   | 'click'
-  | 'chime';
+  | 'chime'
+  | 'bark';
 
 /** Minimum gap between two plays of the same sound, so a big battle doesn't deafen. */
 const GAP: Partial<Record<Effect, number>> = {
@@ -36,11 +38,14 @@ const SETTINGS = 'hotwar.audio.v1';
 interface Settings {
   volume: number;
   music: number;
+  /** The announcer. */
   voice: boolean;
+  /** Units answering when selected and ordered about. */
+  replies: boolean;
 }
 
 function loadSettings(): Settings {
-  const fallback = { volume: 0.55, music: 0.35, voice: true };
+  const fallback = { volume: 0.55, music: 0.35, voice: true, replies: true };
   try {
     const raw = window.localStorage.getItem(SETTINGS);
     return raw ? { ...fallback, ...(JSON.parse(raw) as Partial<Settings>) } : fallback;
@@ -54,6 +59,7 @@ export class Audio {
   volume: number;
   musicVolume: number;
   voice: boolean;
+  replies: boolean;
   private music: Music | null = null;
   private context: AudioContext | null = null;
   private master: GainNode | null = null;
@@ -61,19 +67,28 @@ export class Audio {
   private readonly last = new Map<Effect, number>();
   private speaking = false;
   private readonly spoken: string[] = [];
+  private replying = false;
+  private replyToken = 0;
+  private lastReply = 0;
 
   constructor() {
     const settings = loadSettings();
     this.volume = settings.volume;
     this.musicVolume = settings.music;
     this.voice = settings.voice;
+    this.replies = settings.replies;
   }
 
   private save(): void {
     try {
       window.localStorage.setItem(
         SETTINGS,
-        JSON.stringify({ volume: this.volume, music: this.musicVolume, voice: this.voice }),
+        JSON.stringify({
+          volume: this.volume,
+          music: this.musicVolume,
+          voice: this.voice,
+          replies: this.replies,
+        }),
       );
     } catch {
       // Not remembered in private browsing.
@@ -113,6 +128,12 @@ export class Audio {
   setVoice(on: boolean): void {
     this.voice = on;
     if (!on && 'speechSynthesis' in window) window.speechSynthesis.cancel();
+    this.save();
+  }
+
+  setReplies(on: boolean): void {
+    this.replies = on;
+    if (!on && this.replying && 'speechSynthesis' in window) window.speechSynthesis.cancel();
     this.save();
   }
 
@@ -220,6 +241,12 @@ export class Audio {
         this.tone(out, t, 'sine', 300, 1800, 0.45, 0.3);
         this.tone(out, t, 'triangle', 600, 2400, 0.45, 0.15);
         break;
+      case 'bark':
+        for (const at of [0, 0.16]) {
+          this.tone(out, t + at, 'sawtooth', 520, 260, 0.09, 0.22);
+          this.burst(out, t + at, 0.08, 'bandpass', 900, 0.35);
+        }
+        break;
       case 'select':
         this.tone(out, t, 'square', 880, 880, 0.04, 0.12);
         this.tone(out, t + 0.05, 'square', 1320, 1320, 0.05, 0.1);
@@ -244,10 +271,60 @@ export class Audio {
     }
   }
 
+  /**
+   * A unit answering an order, in its own voice. The newest order wins; the announcer
+   * always gets priority.
+   */
+  reply(line: Reply | 'bark'): void {
+    if (!this.replies) return;
+    if (line === 'bark') {
+      this.play('bark');
+      return;
+    }
+    if (!('speechSynthesis' in window) || this.speaking) return;
+    const now = performance.now();
+    if (now - this.lastReply < 500) return;
+    this.lastReply = now;
+    if (this.replying) window.speechSynthesis.cancel();
+    const utterance = new SpeechSynthesisUtterance(line.text);
+    utterance.pitch = line.pitch;
+    utterance.rate = line.rate;
+    utterance.volume = Math.min(1, this.volume * 1.3);
+    const voice = this.unitVoice(line.voice);
+    if (voice) utterance.voice = voice;
+    const token = ++this.replyToken;
+    this.replying = true;
+    const done = () => {
+      if (token === this.replyToken) this.replying = false;
+    };
+    utterance.onend = done;
+    utterance.onerror = done;
+    window.speechSynthesis.speak(utterance);
+  }
+
+  /** A voice for the soldiers: a man's if the browser has one, and not the announcer's. */
+  private unitVoice(index: number): SpeechSynthesisVoice | undefined {
+    const english = window.speechSynthesis
+      .getVoices()
+      .filter((voice) => voice.lang.startsWith('en'));
+    const men = english.filter((voice) =>
+      /david|mark|guy|george|ryan|daniel|james|fred|alex|male|christopher|eric|thomas|brian/i.test(
+        voice.name,
+      ),
+    );
+    const pool = men.length > 0 ? men : english;
+    return pool[index % Math.max(1, pool.length)];
+  }
+
   /** Reads an announcement aloud with the browser's own speech voice. */
   say(text: string): void {
     if (!this.voice || !('speechSynthesis' in window)) return;
     if (this.spoken.length > 2) return;
+    // The announcer talks over the troops.
+    if (this.replying) {
+      window.speechSynthesis.cancel();
+      this.replying = false;
+    }
     this.spoken.push(text);
     if (!this.speaking) this.speakNext();
   }
