@@ -1,0 +1,9 @@
+{
+  "recommendations": [
+    "dbaeumer.vscode-eslint",
+    "esbenp.prettier-vscode",
+    "editorconfig.editorconfig",
+    "raczzalan.webgl-glsl-editor",
+    "yoavbls.pretty-ts-errors"
+  ]
+}

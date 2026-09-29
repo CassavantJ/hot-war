@@ -1,0 +1,65 @@
+/*
+ * The hub's look, shared by every app: the monthly theme gradient, Inter, and the same text
+ * colors and focus ring. --theme-l/c/h are set per month by useHubTheme.
+ */
+:root {
+  color-scheme: dark;
+
+  --font-sans: 'Inter Variable', system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+
+  --theme-l: 0.42;
+  --theme-c: 0.13;
+  --theme-h: 320;
+  --bg-top: oklch(var(--theme-l) var(--theme-c) var(--theme-h));
+  --bg-mid: oklch(calc(var(--theme-l) * 0.62) calc(var(--theme-c) * 0.85) var(--theme-h));
+  --bg-bottom: oklch(calc(var(--theme-l) * 0.35) calc(var(--theme-c) * 0.6) var(--theme-h));
+
+  --text: #fff;
+  --text-muted: rgb(255 255 255 / 0.82);
+  --glow: rgb(255 255 255 / 0.55);
+  --surface: rgb(255 255 255 / 0.06);
+  --border: rgb(255 255 255 / 0.2);
+  --radius: 0.75rem;
+  --hub-bar-height: 3rem;
+}
+
+/* Inside the hub's viewer the hub draws its own bar. */
+:root[data-embedded] {
+  --hub-bar-height: 0rem;
+}
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+body {
+  min-height: 100dvh;
+  margin: 0;
+  font-family: var(--font-sans);
+  font-weight: 300;
+  color: var(--text);
+  background: linear-gradient(175deg, var(--bg-top) 0%, var(--bg-mid) 45%, var(--bg-bottom) 100%)
+    fixed;
+  background-color: var(--bg-bottom);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+button {
+  margin: 0;
+  border: 0;
+  color: inherit;
+  font: inherit;
+  cursor: pointer;
+}
+
+a {
+  color: inherit;
+}
+
+:focus-visible {
+  outline: 2px solid #fff;
+  outline-offset: 3px;
+}

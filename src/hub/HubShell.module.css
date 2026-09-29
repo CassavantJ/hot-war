@@ -1,0 +1,44 @@
+.bar {
+  position: sticky;
+  top: 0;
+  z-index: 10;
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  height: var(--hub-bar-height);
+  padding: 0 1rem;
+  padding-top: env(safe-area-inset-top);
+  background: rgb(0 0 0 / 0.3);
+  border-bottom: 1px solid var(--border);
+  backdrop-filter: blur(8px);
+}
+
+.back {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  padding: 0.35rem 0.75rem 0.35rem 0.5rem;
+  border-radius: 999px;
+  text-decoration: none;
+  color: var(--text-muted);
+}
+
+.back:hover,
+.back:focus-visible {
+  color: var(--text);
+  background: rgb(255 255 255 / 0.1);
+}
+
+.icon {
+  width: 1.1rem;
+  height: 1.1rem;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.title {
+  font-weight: 400;
+}

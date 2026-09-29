@@ -1,0 +1,54 @@
+.main {
+  display: grid;
+  place-items: center;
+  min-height: calc(100dvh - var(--hub-bar-height));
+  padding: 1.5rem;
+}
+
+.card {
+  display: grid;
+  justify-items: center;
+  gap: 1rem;
+  width: min(34rem, 100%);
+  padding: 2.5rem 2rem;
+  border-radius: var(--radius);
+  background: var(--surface);
+  box-shadow: inset 0 0 0 1px var(--border);
+  text-align: center;
+}
+
+.title {
+  margin: 0;
+  font-size: clamp(1.75rem, 4vw, 2.5rem);
+  font-weight: 300;
+  text-shadow: 0 0 0.75rem var(--glow);
+}
+
+.text {
+  margin: 0;
+  line-height: 1.5;
+  color: var(--text-muted);
+}
+
+.button {
+  padding: 0.7rem 1.4rem;
+  border-radius: 999px;
+  background: rgb(255 255 255 / 0.1);
+  box-shadow: inset 0 0 0 1px var(--border);
+}
+
+.button:hover,
+.button:focus-visible {
+  background: rgb(255 255 255 / 0.18);
+}
+
+.hint {
+  margin: 0;
+  font-size: 0.85rem;
+  color: var(--text-muted);
+}
+
+.hint code {
+  font-family: ui-monospace, 'Cascadia Mono', Consolas, monospace;
+  color: var(--text);
+}
