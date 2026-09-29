@@ -36,6 +36,12 @@ interface Tuning {
   firstAttack: number;
   /** Credits kept back for buildings before spending on units. */
   reserve: number;
+  /** How much stronger than the enemy's defence a wave must be (0: doesn't check). */
+  margin: number;
+  /** Share of the army kept home when a wave goes out. */
+  keep: number;
+  /** Pull a wave back when it's lost this share of its strength (1: never). */
+  retreat: number;
 }
 
 const TUNING: Record<'easy' | 'normal' | 'hard', Tuning> = {
@@ -48,6 +54,9 @@ const TUNING: Record<'easy' | 'normal' | 'hard', Tuning> = {
     maxWave: 6000,
     firstAttack: 480,
     reserve: 1200,
+    margin: 0,
+    keep: 0.3,
+    retreat: 1,
   },
   normal: {
     think: 1.2,
@@ -58,6 +67,9 @@ const TUNING: Record<'easy' | 'normal' | 'hard', Tuning> = {
     maxWave: 10000,
     firstAttack: 330,
     reserve: 600,
+    margin: 1.2,
+    keep: 0.25,
+    retreat: 0.6,
   },
   hard: {
     think: 0.7,
@@ -68,6 +80,9 @@ const TUNING: Record<'easy' | 'normal' | 'hard', Tuning> = {
     maxWave: 14000,
     firstAttack: 240,
     reserve: 300,
+    margin: 1.35,
+    keep: 0.2,
+    retreat: 0.55,
   },
 };
 
@@ -85,8 +100,8 @@ const BUILD_PLAN: [Role, number, number][] = [
   ['factory', 2, 9],
   ['barracks', 2, 10],
   ['refinery', 3, 12],
-  ['super', 1, 13],
-  ['super', 2, 19],
+  ['super', 1, 14],
+  ['super', 2, 20],
 ];
 
 const NAVAL_MIX: Record<Faction, [UnitType, number][]> = {
@@ -105,14 +120,14 @@ const NAVAL_MIX: Record<Faction, [UnitType, number][]> = {
 const INFANTRY_MIX: Record<Faction, [UnitType, number][]> = {
   accord: [
     ['rifleman', 5],
-    ['hound', 1],
-    ['skyjumper', 1.5],
+    ['hound', 0.5],
+    ['skyjumper', 1],
     ['commando', 0.6],
   ],
   bloc: [
     ['draftee', 5],
     ['flakgunner', 1.5],
-    ['hound', 1],
+    ['hound', 0.5],
     ['torch', 3],
   ],
 };
@@ -162,6 +177,9 @@ export class AiBrain {
   private timer: number;
   private waves = 0;
   private readonly attackers = new Set<number>();
+  /** What the current wave was worth when it set out. */
+  private waveValue = 0;
+  private lastWave = 0;
   private enemy = -1;
   private defenseCount = 0;
   /** The nearest open water to the base, if it's part of a sea big enough for ships. */
@@ -281,6 +299,9 @@ export class AiBrain {
         continue;
       }
       if (role === 'naval' && !this.shipyardSpot()) continue;
+      // Luxuries (a second factory, superweapons) only when money's piling up.
+      const luxury = role === 'super' || (count > 1 && (role === 'factory' || role === 'barracks'));
+      if (luxury && player.credits < (role === 'super' ? 3000 : 2500)) continue;
       if (role === 'super' && player.ai !== 'hard' && count > 1) continue;
       const have = this.roleCount(role);
       if (have >= count) continue;
@@ -355,7 +376,7 @@ export class AiBrain {
       if (unit.def.kind === 'infantry') infantryValue += unit.def.cost;
       else vehicleValue += unit.def.cost;
     }
-    const share = player.faction === 'accord' ? 0.45 : 0.35;
+    const share = player.faction === 'accord' ? 0.28 : 0.35;
     const wantInfantry = player.has('factory')
       ? infantryValue <= (infantryValue + vehicleValue) * share + 600
       : army.length < 8;
@@ -455,6 +476,16 @@ export class AiBrain {
         (unit) => unit.order.kind === 'idle' || (unit.order.kind === 'move' && !unit.order.attack),
       );
       if (responders.length > 0) orderMove(world, responders, threat.x, threat.z, true);
+      // A serious attack on the base calls the wave home (smarter players only).
+      const guard = homeGuard.reduce((sum, unit) => sum + unit.def.cost, 0);
+      if (this.tuning.margin > 0 && this.attackers.size > 0 && threat.value > guard * 1.2 + 1500) {
+        const wave = [...this.attackers]
+          .map((id) => world.unit(id))
+          .filter((unit): unit is Unit => unit !== undefined && unit.def.flies !== 'jet');
+        if (wave.length > 0) orderMove(world, wave, threat.x, threat.z, true);
+        this.attackers.clear();
+        this.waveValue = 0;
+      }
     }
     // Waves.
     for (const id of this.attackers) {
@@ -466,28 +497,42 @@ export class AiBrain {
       this.tuning.maxWave,
       this.tuning.firstWave + this.waves * this.tuning.waveGrowth,
     );
+    // Smarter players only attack when they clearly outgun what's waiting for them.
+    const sendable = value * (1 - this.tuning.keep);
+    // Pounce on an enemy with next to nothing left at home; don't sit about forever either.
+    const defenceless = enemy !== null && this.defenceOf(enemy) * 1.5 + 400 < value;
+    const restless = world.time - this.lastWave > 360 || value > 20000 || defenceless;
+    const strongEnough =
+      this.tuning.margin === 0 ||
+      restless ||
+      (enemy !== null && sendable >= this.defenceOf(enemy) * this.tuning.margin);
     if (
       this.attacks &&
       !threat &&
       enemy &&
       world.time >= this.tuning.firstAttack &&
-      value >= needed &&
+      (value >= needed || defenceless) &&
+      strongEnough &&
       this.attackers.size < 4
     ) {
       this.waves++;
-      // Send roughly what's needed (hard sends nearly everything), keeping the rest home.
       const wave: Unit[] = [];
       let sent = 0;
-      const budget = player.ai === 'hard' ? value * 0.85 : needed * 1.25;
-      for (const unit of groundHome) {
-        if (sent >= budget) break;
+      // Fast units in front of slow ones keeps a wave together a little better.
+      const ordered = groundHome.slice().sort((a, b) => b.def.cost - a.def.cost);
+      for (const unit of ordered) {
+        if (sent >= sendable) break;
         wave.push(unit);
         sent += unit.def.cost;
       }
+      this.waveValue = sent;
+      this.lastWave = world.time;
       for (const unit of wave) this.attackers.add(unit.id);
       const target = this.targetNear(enemy, base.cx, base.cz);
       if (target) orderMove(world, wave, target.x, target.z, true);
     }
+    this.checkRetreat(base, enemy);
+    this.digIn(base, enemy);
     // Keep waves pushing: idle attackers head for the next enemy building.
     for (const id of this.attackers) {
       const unit = world.unit(id);
@@ -503,6 +548,57 @@ export class AiBrain {
       else orderMove(world, [unit], target.x, target.z, true);
     }
     this.flyJets(units, enemy);
+  }
+
+  /** What an enemy has defending its base: units near home plus its defences. */
+  private defenceOf(enemy: Player): number {
+    const world = this.world;
+    const home = world.structures.find(
+      (structure) => structure.owner === enemy.index && structure.def.role === 'hq',
+    );
+    const x = home?.cx ?? enemy.start.x;
+    const z = home?.cz ?? enemy.start.z;
+    let total = 0;
+    for (const unit of world.units) {
+      if (unit.owner !== enemy.index || unit.def.weapons.length === 0 || unit.def.harvester)
+        continue;
+      if (unit.def.naval || Math.hypot(unit.x - x, unit.z - z) > 22) continue;
+      total += unit.def.cost;
+    }
+    for (const structure of world.structures) {
+      if (structure.owner !== enemy.index) continue;
+      if (structure.def.weapon || structure.garrison.length > 0) total += structure.def.cost;
+    }
+    return total;
+  }
+
+  /** A wave that's been cut to pieces falls back instead of dying to the last tank. */
+  private checkRetreat(base: { cx: number; cz: number }, enemy: Player | null): void {
+    if (this.tuning.retreat >= 1 || this.attackers.size === 0 || this.waveValue === 0) return;
+    const world = this.world;
+    const alive = [...this.attackers]
+      .map((id) => world.unit(id))
+      .filter((unit) => unit !== undefined);
+    const value = alive.reduce((sum, unit) => sum + unit.def.cost, 0);
+    if (value > this.waveValue * (1 - this.tuning.retreat)) return;
+    const home = this.homePoint(base.cx, base.cz, enemy);
+    const ground = alive.filter((unit) => unit.def.flies !== 'jet');
+    if (ground.length > 0) orderMove(world, ground, home.x, home.z);
+    this.attackers.clear();
+    this.waveValue = 0;
+  }
+
+  /** Riflemen standing guard at home dig in behind sandbags. */
+  private digIn(base: { cx: number; cz: number }, enemy: Player | null): void {
+    if (this.player.ai === 'easy') return;
+    const home = this.homePoint(base.cx, base.cz, enemy);
+    for (const unit of this.own(this.world.units)) {
+      if (!unit.def.dugInWeapon || unit.dugIn || unit.digging > 0 || this.attackers.has(unit.id))
+        continue;
+      if (unit.order.kind !== 'idle') continue;
+      if (Math.hypot(unit.x - home.x, unit.z - home.z) > 5) continue;
+      unit.order = { kind: 'deploy' };
+    }
   }
 
   private homePoint(x: number, z: number, enemy: Player | null): { x: number; z: number } {
@@ -569,23 +665,27 @@ export class AiBrain {
   }
 
   /** The nearest enemy unit inside our base, if any. */
-  private threat(x: number, z: number): { x: number; z: number } | null {
+  private threat(x: number, z: number): { x: number; z: number; value: number } | null {
     const world = this.world;
     let radius = 14;
     for (const structure of this.own(world.structures)) {
       radius = Math.max(radius, Math.hypot(structure.cx - x, structure.cz - z) + 7);
     }
-    let best: { x: number; z: number } | null = null;
+    let best: { x: number; z: number; value: number } | null = null;
     let bestDistance = radius;
+    let value = 0;
     for (const unit of world.units) {
       if (!world.isEnemy(this.player.index, unit.owner) || unit.inside) continue;
       if (unit.def.weapons.length === 0 && !unit.def.engineer) continue;
       const distance = Math.hypot(unit.x - x, unit.z - z);
+      if (distance > radius) continue;
+      value += unit.def.cost;
       if (distance < bestDistance) {
         bestDistance = distance;
-        best = { x: unit.x, z: unit.z };
+        best = { x: unit.x, z: unit.z, value: 0 };
       }
     }
+    if (best) best.value = value;
     return best;
   }
 

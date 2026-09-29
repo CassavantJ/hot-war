@@ -124,16 +124,13 @@ export function buildList(player: Player): (UnitType | StructureType)[] {
 }
 
 /** Seconds to build something: more producers and full power make it quicker. */
-export function buildTime(world: World, player: Player, type: UnitType | StructureType): number {
+export function buildTime(_world: World, player: Player, type: UnitType | StructureType): number {
   let producers = 1;
   if (isUnitType(type)) producers = player.count(PRODUCER_ROLE[UNITS[type].from]);
   else producers = player.count('hq');
   const speedup = Math.min(2.5, 1 / 0.8 ** Math.max(0, producers - 1));
   const rate = BUILD_RATE * speedup * player.powerFactor;
-  return (
-    Math.max(1, costOf(type) / rate) *
-    (world.settings.players[player.index]?.ai === 'easy' ? 1.25 : 1)
-  );
+  return Math.max(1, costOf(type) / rate) / player.buildRate;
 }
 
 /** Starts building (or queues up more of) something. Returns false if it can't. */

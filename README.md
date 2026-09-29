@@ -13,8 +13,15 @@ and music) is made for this game, in code.
 - **The Bloc** is heavy armour and brute force: Bear tanks, the twin-cannon Behemoth, Rocket
   Trucks, Flak Trucks, Torch Troopers, Dirigible bombers and armoured Ore Haulers.
 
-Stage 1 is skirmish against computer players (easy, normal and hard) on three maps for two to
-four players. Later stages add naval units, superweapons, transports and a campaign.
+- **Skirmish** against computer players (easy, normal and hard) on five maps for two to four
+  players, two of them built around the sea.
+- **Navies**: shipyards on the water, three warships a side (the Bloc's Hunter Sub hides
+  underwater until it fires), and an amphibious Hover Transport. The Flak Truck carries
+  infantry too.
+- **Superweapons**: the Accord's Storm Array and Phase Gate, the Bloc's Hellfire Silo and
+  Bulwark Field. They take minutes to charge, and everyone is warned when one is ready.
+- **Two short campaigns**, three missions each, with briefings, scripted attacks, objectives
+  and reinforcements.
 
 ## How it's built
 
@@ -22,7 +29,9 @@ four players. Later stages add naval units, superweapons, transports and a campa
   grid and its generator (`map.ts`, `maps.ts`), A\* pathfinding (`path.ts`), units and their
   orders (`units.ts`, `movement.ts`), weapons, armour and projectiles (`combat.ts`, `rules.ts`),
   building, power and placement (`production.ts`, `structures.ts`), ore and harvesting
-  (`economy.ts`), the shroud, crates, and the computer players (`ai.ts`).
+  (`economy.ts`), the shroud, crates, superweapons (`superweapons.ts`), campaign missions
+  (`mission.ts`, `campaign.ts`), and the computer players (`ai.ts`). Movement works on three
+  layers (land, water and amphibious), each with its own pathfinding.
 - **View** (`src/view/`): three.js from a fixed isometric angle. Every model is built from simple
   solids (`models.ts`) and drawn instanced, with a team-colour shader; terrain, water, the
   shroud, particles, beams, decals, the radar and the selection overlay.

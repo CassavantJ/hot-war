@@ -102,6 +102,15 @@ export class Player {
     return this.roles.get(role) ?? 0;
   }
 
+  /** Computer players' handicap or edge: income and build speed multipliers. */
+  get incomeRate(): number {
+    return this.ai === 'hard' ? 1.15 : this.ai === 'easy' ? 0.85 : 1;
+  }
+
+  get buildRate(): number {
+    return this.ai === 'hard' ? 1.1 : this.ai === 'easy' ? 0.75 : 1;
+  }
+
   /** How fast things build, 0–1, given the power situation. */
   get powerFactor(): number {
     if (!this.lowPower) return 1;

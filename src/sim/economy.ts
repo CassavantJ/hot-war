@@ -262,7 +262,7 @@ export function tickHarvester(world: World, unit: Unit): void {
       unit.mineTimer = UNLOAD_EVERY;
       const amount = Math.min(unit.load, UNLOAD_AMOUNT);
       unit.load -= amount;
-      player.credits += amount;
+      player.credits += amount * player.incomeRate;
       player.stats.harvested += amount;
       refinery.sinceFired = 0;
       if (unit.load <= 0) {
