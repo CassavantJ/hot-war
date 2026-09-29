@@ -230,7 +230,13 @@ export function Sidebar({ match, onMenu }: { match: Match; onMenu: () => void })
           </div>
           <div className={styles.cameos} role="tabpanel">
             {list.length === 0 && (
-              <p className={styles.empty}>{emptyText(current?.id ?? 'building', player)}</p>
+              <p className={styles.empty}>
+                {emptyText(
+                  current?.id ?? 'building',
+                  player,
+                  match.world.mission?.def.tech?.length === 0,
+                )}
+              </p>
             )}
             {list.map((item) => (
               <button
@@ -367,7 +373,8 @@ function hint(mode: string): string {
   return 'Left-click a button to build; right-click to pause or cancel. Shift-click queues five.';
 }
 
-function emptyText(tab: BuildTab, player: Player): string {
+function emptyText(tab: BuildTab, player: Player, noBase: boolean): string {
+  if (noBase) return 'No base this time: the army you have is all you get.';
   if (!player.has('hq')) return 'Deploy your Base Truck to start building.';
   if (tab === 'infantry') return 'Build a Barracks to train infantry.';
   if (tab === 'vehicle') return 'Build a Refinery, then a vehicle factory.';
