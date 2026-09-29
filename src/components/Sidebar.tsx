@@ -21,6 +21,8 @@ import {
   type StructureType,
   type UnitType,
 } from '../sim/rules';
+import { SUPERWEAPONS } from '../sim/rules';
+import { superweaponsOf } from '../sim/superweapons';
 import { renderIcons } from '../view/icons';
 import styles from './Match.module.css';
 import { Radar } from './Radar';
@@ -200,6 +202,7 @@ export function Sidebar({ match, onMenu }: { match: Match; onMenu: () => void })
           <DollarSign aria-hidden="true" size={16} />
         </button>
       </div>
+      <Superweapons match={match} icons={icons} />
       <div className={styles.build}>
         <PowerBar player={player} />
         <div className={styles.buildMain}>
@@ -282,6 +285,48 @@ export function Sidebar({ match, onMenu }: { match: Match; onMenu: () => void })
   );
 }
 
+/** A button per superweapon you own: its countdown, then click to aim it. */
+function Superweapons({ match, icons }: { match: Match; icons: Map<string, string> }) {
+  const world = match.world;
+  const owned = superweaponsOf(world, world.local);
+  if (owned.length === 0) return null;
+  const aiming = match.controller?.mode.kind === 'superweapon' ? match.controller.mode.id : 0;
+  return (
+    <div className={styles.supers}>
+      {owned.map((structure) => {
+        const id = structure.def.superweapon;
+        if (!id) return null;
+        const def = SUPERWEAPONS[id];
+        const ready = structure.superCharge >= 1 && structure.working;
+        const left = Math.ceil((1 - structure.superCharge) * def.charge);
+        const clock = `${Math.floor(left / 60)}:${String(left % 60).padStart(2, '0')}`;
+        return (
+          <button
+            key={structure.id}
+            type="button"
+            className={styles.super}
+            data-ready={ready || undefined}
+            aria-pressed={aiming === structure.id}
+            aria-label={`${def.name}: ${ready ? 'ready' : clock}`}
+            title={def.prompt}
+            disabled={!ready}
+            style={{ '--charge': structure.superCharge } as CSSProperties}
+            onClick={() => {
+              match.audio.unlock();
+              match.controller?.startSuperweapon(structure.id);
+              match.notify();
+            }}
+          >
+            {icons.get(structure.type) ? <img src={icons.get(structure.type)} alt="" /> : null}
+            <span className={styles.superName}>{def.name}</span>
+            <span className={styles.superTime}>{ready ? 'Ready' : clock}</span>
+          </button>
+        );
+      })}
+    </div>
+  );
+}
+
 function Details({ type, player }: { type: Buildable; player: Player }) {
   const cost = costOf(type);
   if (isUnitType(type)) {
@@ -318,6 +363,7 @@ function hint(mode: string): string {
   if (mode === 'repair') return 'Click a damaged building to repair it. Right-click to stop.';
   if (mode === 'place') return 'Click near your base to place it. Right-click to cancel.';
   if (mode === 'attackMove') return 'Click where to attack-move to.';
+  if (mode === 'superweapon') return 'Click the map to fire. Right-click to cancel.';
   return 'Left-click a button to build; right-click to pause or cancel. Shift-click queues five.';
 }
 

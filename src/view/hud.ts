@@ -1,4 +1,5 @@
 import type { Controller } from '../game/controller';
+import { SUPERWEAPONS } from '../sim/rules';
 import type { Structure, Unit } from '../sim/entities';
 import type { GameView } from './GameView';
 
@@ -174,6 +175,15 @@ export function drawHud(
       ctx.fillRect(top.x - width / 2, top.y - 3, width * load, 2);
     }
     chevrons(ctx, top.x + width / 2 + 2, top.y - 5, unit.rank);
+    const room = unit.def.transport?.slots ?? 0;
+    if (room > 0 && (isSelected || unit.passengers.length > 0)) {
+      let used = 0;
+      for (const id of unit.passengers) used += world.unit(id)?.def.kind === 'infantry' ? 1 : 4;
+      for (let i = 0; i < room; i++) {
+        ctx.fillStyle = i < used ? '#ffd35a' : 'rgba(0,0,0,0.6)';
+        ctx.fillRect(top.x - width / 2 + i * 5, top.y - 15, 4, 4);
+      }
+    }
     const group = isSelected ? controller.groupOf(unit.id) : null;
     if (group !== null) {
       ctx.font = '700 10px Inter Variable, system-ui, sans-serif';
@@ -190,6 +200,43 @@ export function drawHud(
     if (!view.unitVisible(unit)) continue;
     const isSelected = selected.has(unit.id);
     if (isSelected || unit === hoverUnit) draw(unit, isSelected);
+  }
+  // A superweapon's area, while aiming it.
+  const mode = controller.mode;
+  if (mode.kind === 'superweapon') {
+    const weapon = world.structure(mode.id)?.def.superweapon;
+    if (weapon) {
+      const radius = SUPERWEAPONS[weapon].radius;
+      const circle = (x: number, z: number, color: string) => {
+        ctx.strokeStyle = color;
+        ctx.lineWidth = 2;
+        ctx.beginPath();
+        for (let i = 0; i <= 40; i++) {
+          const angle = (i / 40) * Math.PI * 2;
+          const p = view.project(x + Math.cos(angle) * radius, 0, z + Math.sin(angle) * radius);
+          if (i === 0) ctx.moveTo(p.x, p.y);
+          else ctx.lineTo(p.x, p.y);
+        }
+        ctx.stroke();
+      };
+      const cursor = view.screenToWorld(controller.pointerX, controller.pointerY);
+      if (mode.from) {
+        circle(mode.from.x, mode.from.z, 'rgba(120,200,255,0.9)');
+        const a = view.project(mode.from.x, 0, mode.from.z);
+        const b = view.project(cursor.x, 0, cursor.z);
+        ctx.setLineDash([6, 6]);
+        ctx.beginPath();
+        ctx.moveTo(a.x, a.y);
+        ctx.lineTo(b.x, b.y);
+        ctx.stroke();
+        ctx.setLineDash([]);
+      }
+      circle(
+        cursor.x,
+        cursor.z,
+        Math.floor(time * 4) % 2 ? 'rgba(255,177,61,0.95)' : 'rgba(255,90,60,0.95)',
+      );
+    }
   }
   // Order markers.
   for (const marker of controller.markers) {

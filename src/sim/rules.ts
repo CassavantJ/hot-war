@@ -19,83 +19,61 @@ export const FACTIONS: Record<Faction, { name: string; blurb: string; color: str
   },
 };
 
-export type Armor = 'infantry' | 'light' | 'medium' | 'heavy' | 'aircraft' | 'building' | 'wall';
+export type Armor =
+  'infantry' | 'light' | 'medium' | 'heavy' | 'aircraft' | 'building' | 'wall' | 'ship';
 
 export type Warhead =
-  'bullet' | 'sniper' | 'ap' | 'he' | 'fire' | 'beam' | 'flak' | 'missile' | 'bomb' | 'bite';
+  | 'bullet'
+  | 'sniper'
+  | 'ap'
+  | 'he'
+  | 'fire'
+  | 'beam'
+  | 'flak'
+  | 'missile'
+  | 'bomb'
+  | 'bite'
+  | 'torpedo'
+  | 'shock';
 
-/** Damage multiplier for each warhead against each armour. */
-export const VERSUS: Record<Warhead, Record<Armor, number>> = {
-  bullet: {
-    infantry: 1,
-    light: 0.4,
-    medium: 0.25,
-    heavy: 0.15,
-    aircraft: 0.4,
-    building: 0.15,
-    wall: 0.05,
-  },
-  sniper: {
-    infantry: 1,
-    light: 0.05,
-    medium: 0.05,
-    heavy: 0.05,
-    aircraft: 0.05,
-    building: 0.02,
-    wall: 0,
-  },
-  ap: {
-    infantry: 0.3,
-    light: 0.95,
-    medium: 1,
-    heavy: 0.9,
-    aircraft: 0.5,
-    building: 0.75,
-    wall: 0.6,
-  },
-  he: { infantry: 1, light: 0.7, medium: 0.6, heavy: 0.5, aircraft: 0.3, building: 1.2, wall: 1 },
-  fire: {
-    infantry: 1.6,
-    light: 0.6,
-    medium: 0.45,
-    heavy: 0.3,
-    aircraft: 0.2,
-    building: 0.8,
-    wall: 0.2,
-  },
-  beam: {
-    infantry: 0.8,
-    light: 1,
-    medium: 0.9,
-    heavy: 0.75,
-    aircraft: 0.5,
-    building: 1.3,
-    wall: 1,
-  },
-  flak: {
-    infantry: 0.6,
-    light: 0.3,
-    medium: 0.2,
-    heavy: 0.1,
-    aircraft: 1,
-    building: 0.08,
-    wall: 0,
-  },
-  missile: {
-    infantry: 0.3,
-    light: 1,
-    medium: 0.9,
-    heavy: 0.8,
-    aircraft: 1,
-    building: 0.55,
-    wall: 0.3,
-  },
-  bomb: { infantry: 1, light: 1, medium: 1, heavy: 0.9, aircraft: 0, building: 1.3, wall: 1.2 },
-  bite: { infantry: 10, light: 0, medium: 0, heavy: 0, aircraft: 0, building: 0, wall: 0 },
+type Row = [number, number, number, number, number, number, number, number];
+/** Columns: infantry, light, medium, heavy, aircraft, building, wall, ship. */
+const TABLE: Record<Warhead, Row> = {
+  bullet: [1, 0.4, 0.25, 0.15, 0.4, 0.15, 0.05, 0.2],
+  sniper: [1, 0.05, 0.05, 0.05, 0.05, 0.02, 0, 0],
+  ap: [0.3, 0.95, 1, 0.9, 0.5, 0.75, 0.6, 0.9],
+  he: [1, 0.7, 0.6, 0.5, 0.3, 1.2, 1, 0.9],
+  fire: [1.6, 0.6, 0.45, 0.3, 0.2, 0.8, 0.2, 0.4],
+  beam: [0.8, 1, 0.9, 0.75, 0.5, 1.3, 1, 0.9],
+  flak: [0.6, 0.3, 0.2, 0.1, 1, 0.08, 0, 0.1],
+  missile: [0.3, 1, 0.9, 0.8, 1, 0.55, 0.3, 0.9],
+  bomb: [1, 1, 1, 0.9, 0, 1.3, 1.2, 1.1],
+  bite: [10, 0, 0, 0, 0, 0, 0, 0],
+  torpedo: [0, 0, 0, 0, 0, 0, 0, 1.3],
+  shock: [1.3, 1, 1, 0.9, 1, 1, 1, 1],
 };
 
+const ARMORS: Armor[] = [
+  'infantry',
+  'light',
+  'medium',
+  'heavy',
+  'aircraft',
+  'building',
+  'wall',
+  'ship',
+];
+
+/** Damage multiplier for each warhead against each armour. */
+export const VERSUS = Object.fromEntries(
+  Object.entries(TABLE).map(([warhead, row]) => [
+    warhead,
+    Object.fromEntries(ARMORS.map((armor, i) => [armor, row[i] ?? 0])),
+  ]),
+) as Record<Warhead, Record<Armor, number>>;
+
 export type ProjectileKind =
-  'instant' | 'shell' | 'missile' | 'artillery' | 'bomb' | 'beam' | 'flame' | 'melee';
+  'instant' | 'shell' | 'missile' | 'artillery' | 'bomb' | 'beam' | 'flame' | 'melee' | 'torpedo';
 
 export type SoundId =
   | 'rifle'
@@ -132,6 +110,10 @@ export interface WeaponDef {
   split?: number;
   /** Burns out infantry hiding in buildings. */
   clearsGarrison?: boolean;
+  /** Only hits ships (torpedoes, depth charges). */
+  shipsOnly?: boolean;
+  /** Can hit submerged submarines. */
+  underwater?: boolean;
   sound: SoundId;
 }
 
@@ -376,6 +358,93 @@ const WEAPON_LIST = {
     projectile: 'instant',
     sound: 'flak',
   },
+  deckGun: {
+    damage: 70,
+    cooldown: 1.6,
+    range: 7,
+    speed: 16,
+    warhead: 'ap',
+    projectile: 'shell',
+    sound: 'cannon',
+  },
+  depthCharges: {
+    damage: 70,
+    cooldown: 2,
+    range: 4.5,
+    splash: 0.8,
+    shipsOnly: true,
+    underwater: true,
+    warhead: 'torpedo',
+    projectile: 'instant',
+    sound: 'bomb',
+  },
+  cruiserMissiles: {
+    damage: 55,
+    cooldown: 2.2,
+    range: 11,
+    burst: 3,
+    burstDelay: 0.15,
+    speed: 14,
+    air: true,
+    ground: false,
+    warhead: 'missile',
+    projectile: 'missile',
+    sound: 'missile',
+  },
+  monitorGun: {
+    damage: 170,
+    cooldown: 5,
+    range: 14,
+    minRange: 4,
+    speed: 9,
+    splash: 1.4,
+    warhead: 'he',
+    projectile: 'artillery',
+    sound: 'bigcannon',
+  },
+  torpedo: {
+    damage: 150,
+    cooldown: 3,
+    range: 6,
+    speed: 5,
+    shipsOnly: true,
+    underwater: true,
+    warhead: 'torpedo',
+    projectile: 'torpedo',
+    sound: 'missile',
+  },
+  boatFlak: {
+    damage: 35,
+    cooldown: 0.8,
+    range: 7,
+    splash: 0.6,
+    air: true,
+    ground: false,
+    warhead: 'flak',
+    projectile: 'instant',
+    sound: 'flak',
+  },
+  boatGun: {
+    damage: 16,
+    cooldown: 0.35,
+    range: 5,
+    warhead: 'bullet',
+    projectile: 'instant',
+    sound: 'mg',
+  },
+  cruiserRockets: {
+    damage: 200,
+    cooldown: 9,
+    range: 17,
+    minRange: 5,
+    burst: 2,
+    burstDelay: 0.5,
+    speed: 7,
+    splash: 1.6,
+    warhead: 'he',
+    projectile: 'artillery',
+    sound: 'rocket',
+  },
   garrisonGun: {
     damage: 20,
     cooldown: 0.9,
@@ -407,10 +476,12 @@ export type Role =
   | 'defense'
   | 'wall'
   | 'civilian'
-  | 'derrick';
+  | 'derrick'
+  | 'naval'
+  | 'super';
 
-export type UnitKind = 'infantry' | 'vehicle' | 'aircraft';
-export type Producer = 'barracks' | 'factory' | 'radar';
+export type UnitKind = 'infantry' | 'vehicle' | 'aircraft' | 'ship';
+export type Producer = 'barracks' | 'factory' | 'radar' | 'naval';
 
 export type UnitType =
   | 'basetruck'
@@ -432,7 +503,14 @@ export type UnitType =
   | 'rockettruck'
   | 'behemoth'
   | 'orehauler'
-  | 'dirigible';
+  | 'dirigible'
+  | 'frigate'
+  | 'cruiser'
+  | 'monitor'
+  | 'sub'
+  | 'flakboat'
+  | 'missileship'
+  | 'hovercraft';
 
 export interface UnitDef {
   id: UnitType;
@@ -473,6 +551,14 @@ export interface UnitDef {
   ammo?: number;
   /** Hit points healed per second. */
   selfHeal?: number;
+  /** Sails on water only. */
+  naval?: boolean;
+  /** Goes over land and water alike. */
+  amphibious?: boolean;
+  /** Hides underwater until it fires. */
+  submarine?: boolean;
+  /** Carries passengers: infantry take one slot, vehicles four (if allowed). */
+  transport?: { slots: number; vehicles?: boolean };
 }
 
 const INFANTRY = { kind: 'infantry', armor: 'infantry', radius: 0.18, turn: 20 } as const;
@@ -746,6 +832,7 @@ export const UNITS: Record<UnitType, UnitDef> = {
     turret: true,
     prereqs: ['factory'],
     from: 'factory',
+    transport: { slots: 5 },
   },
   rockettruck: {
     id: 'rockettruck',
@@ -820,6 +907,139 @@ export const UNITS: Record<UnitType, UnitDef> = {
     flies: 'airship',
     altitude: 3,
   },
+  frigate: {
+    id: 'frigate',
+    name: 'Frigate',
+    blurb: 'Quick gunship with depth charges. Hunts submarines and shells the shore.',
+    faction: 'accord',
+    kind: 'ship',
+    cost: 1000,
+    hp: 600,
+    armor: 'ship',
+    speed: 2.4,
+    sight: 8,
+    radius: 0.55,
+    turn: 2,
+    weapons: ['deckGun', 'depthCharges'],
+    turret: true,
+    prereqs: ['naval'],
+    from: 'naval',
+    naval: true,
+  },
+  cruiser: {
+    id: 'cruiser',
+    name: 'Sentinel Cruiser',
+    blurb: 'Missile cruiser that keeps aircraft away from the fleet and the coast.',
+    faction: 'accord',
+    kind: 'ship',
+    cost: 1200,
+    hp: 700,
+    armor: 'ship',
+    speed: 2,
+    sight: 9,
+    radius: 0.6,
+    turn: 1.6,
+    weapons: ['cruiserMissiles'],
+    turret: true,
+    prereqs: ['naval', 'radar'],
+    from: 'naval',
+    naval: true,
+  },
+  monitor: {
+    id: 'monitor',
+    name: 'Monitor',
+    blurb: 'Slow, heavily armoured ship with a huge gun that shells targets far inland.',
+    faction: 'accord',
+    kind: 'ship',
+    cost: 2000,
+    hp: 950,
+    armor: 'ship',
+    speed: 1.3,
+    sight: 8,
+    radius: 0.7,
+    turn: 1.2,
+    weapons: ['monitorGun'],
+    turret: true,
+    prereqs: ['naval', 'lab'],
+    from: 'naval',
+    naval: true,
+  },
+  sub: {
+    id: 'sub',
+    name: 'Hunter Sub',
+    blurb:
+      'Stays hidden underwater and sinks ships with torpedoes. Surfaces briefly when it fires.',
+    faction: 'bloc',
+    kind: 'ship',
+    cost: 1000,
+    hp: 600,
+    armor: 'ship',
+    speed: 2,
+    sight: 7,
+    radius: 0.5,
+    turn: 2,
+    weapons: ['torpedo'],
+    prereqs: ['naval'],
+    from: 'naval',
+    naval: true,
+    submarine: true,
+  },
+  flakboat: {
+    id: 'flakboat',
+    name: 'Flak Boat',
+    blurb: 'Fast patrol boat: flak for aircraft and a machine gun for troops on the shore.',
+    faction: 'bloc',
+    kind: 'ship',
+    cost: 600,
+    hp: 420,
+    armor: 'ship',
+    speed: 3,
+    sight: 8,
+    radius: 0.45,
+    turn: 2.6,
+    weapons: ['boatFlak', 'boatGun'],
+    turret: true,
+    prereqs: ['naval'],
+    from: 'naval',
+    naval: true,
+  },
+  missileship: {
+    id: 'missileship',
+    name: 'Rocket Cruiser',
+    blurb: 'Launches pairs of long-range rockets deep into enemy territory.',
+    faction: 'bloc',
+    kind: 'ship',
+    cost: 2000,
+    hp: 1000,
+    armor: 'ship',
+    speed: 1.2,
+    sight: 8,
+    radius: 0.75,
+    turn: 1.1,
+    weapons: ['cruiserRockets'],
+    prereqs: ['naval', 'lab'],
+    from: 'naval',
+    naval: true,
+  },
+  hovercraft: {
+    id: 'hovercraft',
+    name: 'Hover Transport',
+    blurb: 'Crosses land and water. Carries eight infantry or two vehicles. Unarmed.',
+    faction: 'both',
+    kind: 'vehicle',
+    cost: 900,
+    hp: 400,
+    armor: 'light',
+    speed: 2.6,
+    sight: 6,
+    radius: 0.6,
+    turn: 2.4,
+    weapons: [],
+    prereqs: ['naval'],
+    from: 'naval',
+    amphibious: true,
+    transport: { slots: 8, vehicles: true },
+  },
 };
 
 export type StructureType =
@@ -847,6 +1067,12 @@ export type StructureType =
   | 'b_bastion'
   | 'b_flak'
   | 'b_wall'
+  | 'a_navalyard'
+  | 'b_navalyard'
+  | 'a_storm'
+  | 'a_gate'
+  | 'b_silo'
+  | 'b_bulwark'
   | 'c_house'
   | 'c_flats'
   | 'c_store'
@@ -886,7 +1112,49 @@ export interface StructureDef {
   capturable?: boolean;
   /** Credits every few seconds to whoever owns it. */
   income?: number;
+  /** Built on water (shipyards). */
+  onWater?: boolean;
+  superweapon?: SuperweaponId;
 }
+
+export type SuperweaponId = 'storm' | 'phase' | 'missile' | 'shield';
+
+export interface SuperweaponDef {
+  name: string;
+  /** Seconds to charge. */
+  charge: number;
+  /** Radius of the area it affects. */
+  radius: number;
+  /** What the targeting prompt says. */
+  prompt: string;
+}
+
+export const SUPERWEAPONS: Record<SuperweaponId, SuperweaponDef> = {
+  storm: {
+    name: 'Lightning Storm',
+    charge: 360,
+    radius: 4.5,
+    prompt: 'Click where to call down the storm.',
+  },
+  phase: {
+    name: 'Phase Jump',
+    charge: 240,
+    radius: 2.5,
+    prompt: 'Click a group of your units to jump, then where to send them.',
+  },
+  missile: {
+    name: 'Hellfire Missile',
+    charge: 420,
+    radius: 4,
+    prompt: 'Click the missile’s target.',
+  },
+  shield: {
+    name: 'Bulwark Field',
+    charge: 240,
+    radius: 2.5,
+    prompt: 'Click your units or buildings to make them invulnerable.',
+  },
+};
 
 const BASE = { armor: 'building', sight: 5 } as const;
 
@@ -1294,6 +1562,104 @@ export const STRUCTURES: Record<StructureType, StructureDef> = {
     power: 0,
     prereqs: ['power'],
   },
+  a_navalyard: {
+    id: 'a_navalyard',
+    name: 'Naval Yard',
+    blurb: 'Builds ships and hover transports. Must go on water, near your base.',
+    faction: 'accord',
+    role: 'naval',
+    tab: 'building',
+    ...BASE,
+    cost: 1000,
+    hp: 1200,
+    size: [3, 3],
+    height: 0.9,
+    power: -20,
+    prereqs: ['refinery'],
+    onWater: true,
+    capturable: true,
+  },
+  b_navalyard: {
+    id: 'b_navalyard',
+    name: 'Shipyard',
+    blurb: 'Builds ships and hover transports. Must go on water, near your base.',
+    faction: 'bloc',
+    role: 'naval',
+    tab: 'building',
+    ...BASE,
+    cost: 1000,
+    hp: 1200,
+    size: [3, 3],
+    height: 1,
+    power: -20,
+    prereqs: ['refinery'],
+    onWater: true,
+    capturable: true,
+  },
+  a_storm: {
+    id: 'a_storm',
+    name: 'Storm Array',
+    blurb: 'Superweapon: brews a lightning storm over any spot on the map. Hits everything.',
+    faction: 'accord',
+    role: 'super',
+    tab: 'building',
+    ...BASE,
+    cost: 5000,
+    hp: 1000,
+    size: [3, 3],
+    height: 2.3,
+    power: -150,
+    prereqs: ['lab'],
+    superweapon: 'storm',
+  },
+  a_gate: {
+    id: 'a_gate',
+    name: 'Phase Gate',
+    blurb: 'Superweapon: jumps a group of your ground units to anywhere you’ve explored.',
+    faction: 'accord',
+    role: 'super',
+    tab: 'building',
+    ...BASE,
+    cost: 2500,
+    hp: 900,
+    size: [3, 3],
+    height: 1.7,
+    power: -100,
+    prereqs: ['lab'],
+    superweapon: 'phase',
+  },
+  b_silo: {
+    id: 'b_silo',
+    name: 'Hellfire Silo',
+    blurb: 'Superweapon: launches a thermobaric missile at any spot on the map. Hits everything.',
+    faction: 'bloc',
+    role: 'super',
+    tab: 'building',
+    ...BASE,
+    cost: 5000,
+    hp: 1000,
+    size: [3, 3],
+    height: 1,
+    power: -150,
+    prereqs: ['lab'],
+    superweapon: 'missile',
+  },
+  b_bulwark: {
+    id: 'b_bulwark',
+    name: 'Bulwark Field',
+    blurb: 'Superweapon: makes your units and buildings in an area invulnerable for 20 seconds.',
+    faction: 'bloc',
+    role: 'super',
+    tab: 'building',
+    ...BASE,
+    cost: 2500,
+    hp: 900,
+    size: [3, 3],
+    height: 1.8,
+    power: -100,
+    prereqs: ['lab'],
+    superweapon: 'shield',
+  },
   c_house: {
     id: 'c_house',
     name: 'House',
@@ -1400,4 +1766,11 @@ export function structureAvailableTo(def: StructureDef, faction: Faction): boole
 
 export function buildTab(def: UnitDef): BuildTab {
   return def.kind === 'infantry' ? 'infantry' : 'vehicle';
+}
+
+/** How a unit gets about on the ground (flying units don't use this). */
+export function mobilityOf(def: UnitDef): 'ground' | 'naval' | 'amphibious' {
+  if (def.naval) return 'naval';
+  if (def.amphibious) return 'amphibious';
+  return 'ground';
 }

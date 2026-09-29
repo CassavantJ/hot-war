@@ -1,7 +1,7 @@
 import type { Cell } from './map';
 import type { Faction, Role, StructureType, UnitType } from './rules';
 
-export type QueueKind = 'building' | 'defense' | 'infantry' | 'vehicle' | 'aircraft';
+export type QueueKind = 'building' | 'defense' | 'infantry' | 'vehicle' | 'aircraft' | 'naval';
 export type Difficulty = 'easy' | 'normal' | 'hard';
 
 export interface QueueItem {
@@ -48,6 +48,7 @@ export class Player {
     infantry: { items: [], ready: null },
     vehicle: { items: [], ready: null },
     aircraft: { items: [], ready: null },
+    naval: { items: [], ready: null },
   };
   /** How many working structures of each role it has. */
   roles = new Map<Role, number>();

@@ -2,6 +2,7 @@ import { killUnit } from './combat';
 import { angleDiff, DT, turnTowards, type Unit } from './entities';
 import { GROUND } from './map';
 import { lineClear, smoothPath, type Point } from './path';
+import { mobilityOf } from './rules';
 import type { World } from './world';
 
 /** How many paths are worked out per step; the rest wait their turn. */
@@ -27,10 +28,11 @@ export function moveTo(world: World, unit: Unit, x: number, z: number): void {
     return;
   }
   const goal = map.cellAt(tx, tz);
+  const mobility = mobilityOf(unit.def);
   if (
-    !map.isBlocked(goal) &&
+    !map.isBlocked(goal, mobility) &&
     Math.hypot(tx - unit.x, tz - unit.z) < 10 &&
-    lineClear(map, unit.x, unit.z, tx, tz)
+    lineClear(map, unit.x, unit.z, tx, tz, mobility)
   ) {
     unit.waypoints = [{ x: tx, z: tz }];
     unit.pathPending = false;
@@ -66,22 +68,23 @@ export function processPaths(world: World): void {
 
 function planPath(world: World, unit: Unit, x: number, z: number): Point[] {
   const map = world.map;
+  const mobility = mobilityOf(unit.def);
   let start = map.cellAt(unit.x, unit.z);
-  if (map.isBlocked(start)) {
-    start = map.nearestOpen(unit.x, unit.z, 0, 4);
+  if (map.isBlocked(start, mobility)) {
+    start = map.nearestOpen(unit.x, unit.z, 0, 4, mobility);
     if (start < 0) return [];
   }
-  const region = map.regionOf(start);
+  const region = map.regionOf(start, mobility);
   let goal = map.cellAt(x, z);
   let end: Point = { x, z };
-  if (map.isBlocked(goal) || map.regionOf(goal) !== region) {
-    goal = map.nearestOpen(x, z, region, 48);
+  if (map.isBlocked(goal, mobility) || map.regionOf(goal, mobility) !== region) {
+    goal = map.nearestOpen(x, z, region, 48, mobility);
     if (goal < 0) return [];
     end = { x: map.cellX(goal) + 0.5, z: map.cellZ(goal) + 0.5 };
   }
-  const cells = world.pathfinder.find(start, goal);
+  const cells = world.pathfinder.find(start, goal, mobility);
   if (!cells) return [];
-  const points = smoothPath(map, unit.x, unit.z, cells);
+  const points = smoothPath(map, unit.x, unit.z, cells, mobility);
   if (points.length === 0) return [end];
   points[points.length - 1] = end;
   return points;
@@ -148,8 +151,9 @@ export function advance(world: World, unit: Unit): boolean {
   const nx = unit.x + (dx / distance) * step;
   const nz = unit.z + (dz / distance) * step;
   const map = world.map;
-  const here = map.passable(Math.floor(unit.x), Math.floor(unit.z));
-  if (!def.flies && here && !map.passable(Math.floor(nx), Math.floor(nz))) {
+  const mobility = mobilityOf(def);
+  const here = map.passable(Math.floor(unit.x), Math.floor(unit.z), mobility);
+  if (!def.flies && here && !map.passable(Math.floor(nx), Math.floor(nz), mobility)) {
     // Something was built in the way: find a new route.
     moveTo(world, unit, unit.destX, unit.destZ);
     unit.moving = false;
@@ -237,11 +241,11 @@ export function resolveCollisions(world: World): void {
       const uz = unit.z - (dz / distance) * push * share;
       const ox = other.x + (dx / distance) * push * (1 - share);
       const oz = other.z + (dz / distance) * push * (1 - share);
-      if (air || map.passable(Math.floor(ux), Math.floor(uz))) {
+      if (air || map.passable(Math.floor(ux), Math.floor(uz), mobilityOf(unit.def))) {
         unit.x = Math.min(map.width - 0.2, Math.max(0.2, ux));
         unit.z = Math.min(map.height - 0.2, Math.max(0.2, uz));
       }
-      if (air || map.passable(Math.floor(ox), Math.floor(oz))) {
+      if (air || map.passable(Math.floor(ox), Math.floor(oz), mobilityOf(other.def))) {
         other.x = Math.min(map.width - 0.2, Math.max(0.2, ox));
         other.z = Math.min(map.height - 0.2, Math.max(0.2, oz));
       }

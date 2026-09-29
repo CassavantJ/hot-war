@@ -39,6 +39,7 @@ export function queueFor(type: UnitType | StructureType): QueueKind {
   if (isUnitType(type)) {
     const def = UNITS[type];
     if (def.from === 'radar') return 'aircraft';
+    if (def.from === 'naval') return 'naval';
     return def.kind === 'infantry' ? 'infantry' : 'vehicle';
   }
   return STRUCTURES[type].tab === 'defense' ? 'defense' : 'building';
@@ -48,6 +49,7 @@ const PRODUCER_ROLE: Record<Producer, Role> = {
   barracks: 'barracks',
   factory: 'factory',
   radar: 'radar',
+  naval: 'naval',
 };
 
 /** Works out each player's power, roles and radar from their working structures. */
@@ -84,6 +86,8 @@ function queuedCount(player: Player, type: UnitType | StructureType): number {
 
 /** Can this player build this right now (tech, faction and limits)? */
 export function available(world: World, player: Player, type: UnitType | StructureType): boolean {
+  const tech = world.mission?.def.tech;
+  if (tech && player.index === world.local && !tech.includes(type)) return false;
   if (isUnitType(type)) {
     const def = UNITS[type];
     if (!unitAvailableTo(def, player.faction) || !prereqsMet(player, def.prereqs)) return false;
@@ -104,6 +108,7 @@ export function available(world: World, player: Player, type: UnitType | Structu
     return true;
   }
   const def = STRUCTURES[type];
+  if (def.superweapon && world.settings.superweapons === false) return false;
   return structureAvailableTo(def, player.faction) && prereqsMet(player, def.prereqs);
 }
 
@@ -192,7 +197,7 @@ export function cancelBuild(world: World, player: Player, type: UnitType | Struc
 }
 
 export function tickProduction(world: World, player: Player): void {
-  for (const kind of ['building', 'defense', 'infantry', 'vehicle', 'aircraft'] as const) {
+  for (const kind of ['building', 'defense', 'infantry', 'vehicle', 'aircraft', 'naval'] as const) {
     const queue = player.queues[kind];
     const item = queue.items[0];
     if (!item || item.onHold || queue.ready) continue;
@@ -269,6 +274,19 @@ export function spawnUnit(world: World, player: Player, type: UnitType) {
     craft.order = { kind: 'move', x: craft.destX, z: craft.destZ, attack: false };
     return craft;
   }
+  if (def.naval || def.amphibious) {
+    const map = world.map;
+    const mobility = def.naval ? 'naval' : 'amphibious';
+    const cell = map.nearestOpen(producer.cx, producer.z + producer.h + 0.5, 0, 8, mobility);
+    const x = cell >= 0 ? map.cellX(cell) + 0.5 : producer.cx;
+    const z = cell >= 0 ? map.cellZ(cell) + 0.5 : producer.cz;
+    const ship = world.addUnit(type, player.index, x, z, Math.PI / 2);
+    if (producer.rally) {
+      moveTo(world, ship, producer.rally.x, producer.rally.z);
+      ship.order = { kind: 'move', x: ship.destX, z: ship.destZ, attack: false };
+    }
+    return ship;
+  }
   const spot = exitSpot(world, producer);
   const unit = world.addUnit(type, player.index, spot.x, spot.z, Math.PI / 2);
   if (def.harvester) {
@@ -312,7 +330,10 @@ export function placementCheck(
       let ok = map.inside(x, z);
       if (ok) {
         const index = map.index(x, z);
-        ok = !map.isBlocked(index) && (map.structure[index] ?? 0) === 0;
+        // Shipyards float on water; everything else needs dry land.
+        ok =
+          !map.isBlocked(index, def.onWater ? 'naval' : 'ground') &&
+          (map.structure[index] ?? 0) === 0;
       }
       if (ok) {
         world.forUnitsNear(x + 0.5, z + 0.5, 1, (unit) => {

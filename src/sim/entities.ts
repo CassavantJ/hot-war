@@ -98,6 +98,12 @@ export class Unit {
   speedBonus = 1;
   armorBonus = 1;
   firepowerBonus = 1;
+  /** Units carried inside (for transports). */
+  passengers: number[] = [];
+  /** Hidden underwater (submarines, until they fire). */
+  submerged = false;
+  /** Invulnerable until this time (a Bulwark Field). */
+  shieldUntil = -1;
   dead = false;
 
   constructor(id: number, type: UnitType, owner: number, x: number, z: number, facing = 0) {
@@ -160,6 +166,9 @@ export class Structure {
   incomeTimer = 0;
   lastHit = -99;
   lastAttacker = 0;
+  /** Superweapons: 0 → 1 while charging. */
+  superCharge = 0;
+  shieldUntil = -1;
   dead = false;
 
   constructor(id: number, type: StructureType, owner: number, x: number, z: number) {

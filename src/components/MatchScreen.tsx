@@ -2,23 +2,30 @@ import { useEffect, useRef, useState, useSyncExternalStore } from 'react';
 
 import { Audio } from '../game/audio';
 import { Match, SPEEDS } from '../game/match';
+import { saveProgress } from '../sim/campaign';
+import type { MissionDef } from '../sim/mission';
 import { FACTIONS } from '../sim/rules';
 import type { GameSettings } from '../sim/world';
+import { Briefing } from './Campaign';
 import { Help } from './Help';
 import styles from './Match.module.css';
 import { Sidebar } from './Sidebar';
 
 interface Props {
-  settings: GameSettings;
+  source: { settings: GameSettings } | { mission: MissionDef };
   speed: number;
   onRestart: () => void;
+  /** Straight on to the next campaign mission, if there is one. */
+  onNext: (() => void) | null;
   onQuit: () => void;
 }
 
 /** A battle in progress: the battlefield, the sidebar, and the menus over them. */
-export function MatchScreen({ settings, speed, onRestart, onQuit }: Props) {
+export function MatchScreen({ source, speed, onRestart, onNext, onQuit }: Props) {
   const [audio] = useState(() => new Audio());
-  const [match] = useState(() => new Match(settings, audio));
+  const [match] = useState(() => new Match(source, audio));
+  const mission = match.mission;
+  const [briefing, setBriefing] = useState(mission !== null);
   const field = useRef<HTMLDivElement>(null);
   const canvas = useRef<HTMLCanvasElement>(null);
   const overlay = useRef<HTMLCanvasElement>(null);
@@ -66,8 +73,12 @@ export function MatchScreen({ settings, speed, onRestart, onQuit }: Props) {
 
   const outcome = match.world.outcome;
   useEffect(() => {
-    match.setPaused(menu || help);
-  }, [match, menu, help]);
+    match.setPaused(menu || help || briefing);
+  }, [match, menu, help, briefing]);
+
+  useEffect(() => {
+    if (mission && outcome === 'won') saveProgress(mission);
+  }, [mission, outcome]);
 
   const me = match.world.players[match.world.local];
 
@@ -83,7 +94,16 @@ export function MatchScreen({ settings, speed, onRestart, onQuit }: Props) {
             </li>
           ))}
         </ol>
-        {match.paused && !menu && !help && <div className={styles.paused}>Paused</div>}
+        {match.paused && !menu && !help && !briefing && <div className={styles.paused}>Paused</div>}
+        {mission && match.world.mission && (
+          <ol className={styles.objectives} aria-label="Objectives">
+            {mission.objectives.map((objective, i) => (
+              <li key={objective.text} data-status={match.world.mission?.status[i]}>
+                {objective.text}
+              </li>
+            ))}
+          </ol>
+        )}
       </div>
       <Sidebar
         match={match}
@@ -190,6 +210,33 @@ export function MatchScreen({ settings, speed, onRestart, onQuit }: Props) {
           }}
         />
       )}
+      {briefing && mission && (
+        <div className={styles.backdrop}>
+          <div
+            className={styles.dialog}
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="briefing-title"
+          >
+            <Briefing mission={mission} titleId="briefing-title" />
+            <div className={styles.menuButtons}>
+              <button
+                type="button"
+                className={styles.primary}
+                onClick={() => {
+                  audio.unlock();
+                  setBriefing(false);
+                }}
+              >
+                Begin mission
+              </button>
+              <button type="button" onClick={onQuit}>
+                Back
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
       {outcome !== 'playing' && (
         <div className={styles.backdrop} data-late="">
           <div
@@ -199,12 +246,22 @@ export function MatchScreen({ settings, speed, onRestart, onQuit }: Props) {
             aria-labelledby="end-title"
           >
             <h2 id="end-title" className={styles.endTitle} data-outcome={outcome}>
-              {outcome === 'won' ? 'Victory' : 'Defeat'}
+              {mission
+                ? outcome === 'won'
+                  ? 'Mission accomplished'
+                  : 'Mission failed'
+                : outcome === 'won'
+                  ? 'Victory'
+                  : 'Defeat'}
             </h2>
             <p className={styles.endText}>
-              {outcome === 'won'
-                ? 'The enemy has been wiped off the map.'
-                : 'Your base has fallen. There’s always another war.'}
+              {mission
+                ? outcome === 'won'
+                  ? `${mission.title} is done.${onNext ? ' The next mission is unlocked.' : ' That’s the end of this campaign.'}`
+                  : 'Regroup and try again.'
+                : outcome === 'won'
+                  ? 'The enemy has been wiped off the map.'
+                  : 'Your base has fallen. There’s always another war.'}
             </p>
             <table className={styles.stats}>
               <thead>
@@ -235,8 +292,17 @@ export function MatchScreen({ settings, speed, onRestart, onQuit }: Props) {
               </tbody>
             </table>
             <div className={styles.menuButtons}>
-              <button type="button" className={styles.primary} onClick={onRestart}>
-                Play again
+              {mission && outcome === 'won' && onNext ? (
+                <button type="button" className={styles.primary} onClick={onNext}>
+                  Next mission
+                </button>
+              ) : null}
+              <button
+                type="button"
+                className={mission && outcome === 'won' && onNext ? undefined : styles.primary}
+                onClick={onRestart}
+              >
+                {mission ? (outcome === 'won' ? 'Replay mission' : 'Retry mission') : 'Play again'}
               </button>
               <button type="button" onClick={onQuit}>
                 Back to setup

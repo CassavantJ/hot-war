@@ -19,6 +19,7 @@ import {
 } from './entities';
 import { spawnHarvester } from './economy';
 import { BASIC_INFANTRY, WEAPONS } from './rules';
+import { chargeSuperweapon } from './superweapons';
 import type { World } from './world';
 
 /** Seconds a new structure takes to rise out of the ground. */
@@ -57,6 +58,7 @@ export function tickStructure(world: World, structure: Structure): void {
     }
   }
   if (structure.def.walkable && player) repairPad(world, structure);
+  if (structure.def.superweapon) chargeSuperweapon(world, structure);
   if (structure.garrison.length > 0) garrisonFire(world, structure);
   else if (structure.def.weapon && player) defend(world, structure);
 }
@@ -67,6 +69,13 @@ function onBuilt(world: World, structure: Structure): void {
   if (!player) return;
   const role = structure.def.role;
   if (role === 'refinery') spawnHarvester(world, player, structure);
+  if (structure.def.superweapon) {
+    for (const other of world.players) {
+      if (world.isEnemy(other.index, player.index)) {
+        world.announce(other.index, 'Warning: enemy superweapon detected.', 'bad', 'sw-built', 20);
+      }
+    }
+  }
   if (role === 'barracks' || role === 'factory' || role === 'radar') {
     const hasPrimary = world.structures.some(
       (other) =>

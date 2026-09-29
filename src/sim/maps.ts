@@ -14,6 +14,7 @@ type Feature =
   | { kind: 'cliff'; points: XZ[]; width: number; once?: boolean }
   | { kind: 'rocks'; at: XZ; r: number; once?: boolean }
   | { kind: 'gap'; at: XZ; r: number; once?: boolean }
+  | { kind: 'island'; at: XZ; r: number; once?: boolean }
   | { kind: 'forest'; at: XZ; r: number; density: number; once?: boolean }
   | { kind: 'road'; points: XZ[]; width: number; once?: boolean }
   | { kind: 'plaza'; at: XZ; r: number; once?: boolean }
@@ -27,10 +28,12 @@ export interface MapSpec {
   width: number;
   height: number;
   theme: Theme;
-  /** 'point' mirrors through the middle (two players); 'quad' turns four ways. */
-  symmetry: 'point' | 'quad';
+  /** 'point' mirrors through the middle (two players); 'quad' turns four ways; 'none' is as drawn. */
+  symmetry: 'point' | 'quad' | 'none';
   /** Scattered trees, 0–1. */
   trees: number;
+  /** Campaign-only maps don't appear in the skirmish list. */
+  campaign?: boolean;
   features: Feature[];
 }
 
@@ -135,6 +138,63 @@ export const MAPS: MapSpec[] = [
     ],
   },
   {
+    id: 'shores',
+    name: 'Two Shores',
+    blurb:
+      'An inland sea splits two bases. March round the ends, or take to the water for the gem island.',
+    players: 2,
+    width: 80,
+    height: 64,
+    theme: 'temperate',
+    symmetry: 'point',
+    trees: 0.03,
+    features: [
+      { kind: 'start', at: [13, 32] },
+      { kind: 'lake', at: [40, 32], r: 15, once: true },
+      { kind: 'lake', at: [33, 24], r: 7 },
+      { kind: 'island', at: [40, 32], r: 4.5, once: true },
+      { kind: 'ore', at: [40, 32], r: 2.6, gems: true, once: true },
+      { kind: 'ore', at: [11, 21], r: 4, drill: true },
+      { kind: 'ore', at: [11, 44], r: 3.4 },
+      { kind: 'ore', at: [40, 7], r: 3.4 },
+      { kind: 'forest', at: [22, 8], r: 4, density: 0.5 },
+      { kind: 'forest', at: [4, 54], r: 3.5, density: 0.5 },
+      { kind: 'rocks', at: [60, 5], r: 2 },
+      { kind: 'plaza', at: [54, 9], r: 4 },
+      { kind: 'building', type: 'c_house', at: [51, 6] },
+      { kind: 'building', type: 'c_store', at: [55, 6] },
+      { kind: 'building', type: 'c_flats', at: [51, 10] },
+      { kind: 'building', type: 'c_derrick', at: [30, 54] },
+    ],
+  },
+  {
+    id: 'inland',
+    name: 'Inland Sea',
+    blurb:
+      'Four corner bases around a sea dotted with gem islands. Whoever rules the water rules the map.',
+    players: 4,
+    width: 96,
+    height: 96,
+    theme: 'temperate',
+    symmetry: 'quad',
+    trees: 0.03,
+    features: [
+      { kind: 'start', at: [14, 14] },
+      { kind: 'lake', at: [48, 48], r: 21, once: true },
+      { kind: 'lake', at: [29, 29], r: 8 },
+      { kind: 'island', at: [48, 34], r: 3.2 },
+      { kind: 'ore', at: [48, 34], r: 2.2, gems: true },
+      { kind: 'ore', at: [27, 11], r: 4, drill: true },
+      { kind: 'ore', at: [11, 28], r: 3.4 },
+      { kind: 'forest', at: [40, 8], r: 4, density: 0.45 },
+      { kind: 'forest', at: [8, 44], r: 3.5, density: 0.45 },
+      { kind: 'plaza', at: [48, 6], r: 3.5 },
+      { kind: 'building', type: 'c_house', at: [45, 4] },
+      { kind: 'building', type: 'c_store', at: [49, 5] },
+      { kind: 'building', type: 'c_derrick', at: [22, 22] },
+    ],
+  },
+  {
     id: 'canyon',
     name: 'Canyon Run',
     blurb: 'Three lanes through a desert canyon. Hold the middle, or sneak round the edges.',
@@ -184,6 +244,7 @@ export function mapSpec(id: string): MapSpec {
 function copies(spec: MapSpec, [x, z]: XZ): XZ[] {
   const w = spec.width;
   const h = spec.height;
+  if (spec.symmetry === 'none') return [[x, z]];
   if (spec.symmetry === 'point') {
     return [
       [x, z],
@@ -203,6 +264,7 @@ function transform(spec: MapSpec, copy: number, point: XZ): XZ {
 }
 
 function copyCount(spec: MapSpec): number {
+  if (spec.symmetry === 'none') return 1;
   return spec.symmetry === 'point' ? 2 : 4;
 }
 
@@ -340,6 +402,16 @@ export function buildMap(spec: MapSpec, seed = 1): BuiltMap {
       const [gx, gz] = transform(spec, copy, gap.at);
       forCells(gx, gz, gap.r, (index, x, z) => {
         if (Math.hypot(x - gx, z - gz) <= gap.r) map.ground[index] = GROUND.rough;
+      });
+    });
+  }
+  // Islands: dry land back out of the water.
+  for (const island of byKind('island')) {
+    each(island, (copy) => {
+      const [ix, iz] = transform(spec, copy, island.at);
+      forCells(ix, iz, island.r * 1.3, (index, x, z) => {
+        const wobble = 0.8 + 0.4 * fairNoise(spec, x, z, seed * 19 + 8, 1.5);
+        if (Math.hypot(x - ix, z - iz) <= island.r * wobble) map.ground[index] = GROUND.clear;
       });
     });
   }

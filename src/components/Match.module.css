@@ -490,6 +490,130 @@
   font-weight: 400;
 }
 
+.objectives {
+  position: absolute;
+  top: 0.6rem;
+  right: 0.7rem;
+  max-width: min(20rem, 45%);
+  margin: 0;
+  padding: 0.45rem 0.6rem 0.45rem 1.5rem;
+  border-radius: 0.3rem;
+  background: rgb(0 0 0 / 0.55);
+  border: 1px solid var(--side-edge);
+  font-size: 0.72rem;
+  line-height: 1.35;
+  pointer-events: none;
+}
+
+.objectives li[data-status='done'] {
+  color: #7dff8a;
+  text-decoration: line-through;
+}
+
+.objectives li[data-status='failed'] {
+  color: #ff8a7a;
+}
+
+.location {
+  margin: -0.4rem 0 0;
+  text-align: center;
+  font-size: 0.75rem;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: #9aa6b2;
+}
+
+.briefingText {
+  display: grid;
+  gap: 0.6rem;
+  font-size: 0.9rem;
+  line-height: 1.5;
+  font-weight: 400;
+  color: #d6dde4;
+}
+
+.briefingText p {
+  margin: 0;
+}
+
+.goals {
+  margin: 0;
+  padding-left: 1.2rem;
+  display: grid;
+  gap: 0.25rem;
+  font-size: 0.85rem;
+  color: #ffd35a;
+}
+
+/* Superweapons ------------------------------------------------------------------------------- */
+
+.supers {
+  display: grid;
+  gap: 0.25rem;
+  margin: 0 0.4rem 0.4rem;
+}
+
+.super {
+  position: relative;
+  display: grid;
+  grid-template-columns: 2.6rem 1fr auto;
+  align-items: center;
+  gap: 0.4rem;
+  padding: 0.2rem 0.4rem 0.2rem 0.2rem;
+  border-radius: 0.25rem;
+  background: rgb(0 0 0 / 0.45);
+  border: 1px solid var(--side-edge);
+  overflow: hidden;
+  font-size: 0.7rem;
+  font-weight: 700;
+  text-align: left;
+}
+
+.super::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  width: calc(var(--charge) * 100%);
+  background: linear-gradient(90deg, rgb(255 170 60 / 0.08), rgb(255 170 60 / 0.25));
+  pointer-events: none;
+}
+
+.super img {
+  position: relative;
+  width: 2.6rem;
+  height: 1.95rem;
+  object-fit: cover;
+  border-radius: 0.15rem;
+}
+
+.superName,
+.superTime {
+  position: relative;
+}
+
+.superTime {
+  font-family: ui-monospace, 'Cascadia Mono', Consolas, monospace;
+  color: #ffd35a;
+}
+
+.super[data-ready] {
+  border-color: #ffb13d;
+  box-shadow: 0 0 0.6rem rgb(255 177 61 / 0.35);
+}
+
+.super[data-ready] .superTime {
+  color: #7dff8a;
+  animation: flash 0.9s steps(2) infinite;
+}
+
+.super[aria-pressed='true'] {
+  background: rgb(255 177 61 / 0.25);
+}
+
+.super:disabled {
+  cursor: default;
+}
+
 /* Dialogs ------------------------------------------------------------------------------------- */
 
 .backdrop {

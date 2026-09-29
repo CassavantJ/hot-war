@@ -1,4 +1,4 @@
-import type { GameMap } from './map';
+import type { GameMap, Mobility } from './map';
 
 export interface Point {
   x: number;
@@ -40,10 +40,16 @@ export class Pathfinder {
   }
 
   /** Cells from start (not included) to goal, or null if there's no way through. */
-  find(start: number, goal: number, limit = 40_000): number[] | null {
+  find(
+    start: number,
+    goal: number,
+    mobility: Mobility = 'ground',
+    limit = 40_000,
+  ): number[] | null {
     const map = this.map;
+    const blocked = map.layers[mobility].blocked;
     if (start === goal) return [];
-    if (map.isBlocked(goal)) return null;
+    if (blocked[goal] !== 0) return null;
     this.generation++;
     if (this.generation === 0xffffffff) {
       this.seen.fill(0);
@@ -81,9 +87,9 @@ export class Pathfinder {
         const nz = cz + dz;
         if (!map.inside(nx, nz)) continue;
         const next = nz * width + nx;
-        if (map.blocked[next] !== 0 || this.closed[next] === gen) continue;
+        if (blocked[next] !== 0 || this.closed[next] === gen) continue;
         if (dx !== 0 && dz !== 0) {
-          if (map.blocked[cz * width + nx] !== 0 || map.blocked[nz * width + cx] !== 0) continue;
+          if (blocked[cz * width + nx] !== 0 || blocked[nz * width + cx] !== 0) continue;
         }
         const tentative = base + cost;
         if (this.seen[next] === gen && tentative >= (this.g[next] ?? Infinity)) continue;
@@ -156,7 +162,14 @@ export class Pathfinder {
 }
 
 /** Is the straight line between two points clear of blocked cells? */
-export function lineClear(map: GameMap, x0: number, z0: number, x1: number, z1: number): boolean {
+export function lineClear(
+  map: GameMap,
+  x0: number,
+  z0: number,
+  x1: number,
+  z1: number,
+  mobility: Mobility = 'ground',
+): boolean {
   let cx = Math.floor(x0);
   let cz = Math.floor(z0);
   const ex = Math.floor(x1);
@@ -170,11 +183,13 @@ export function lineClear(map: GameMap, x0: number, z0: number, x1: number, z1: 
   let maxX = dx === 0 ? Infinity : (dx > 0 ? cx + 1 - x0 : x0 - cx) * deltaX;
   let maxZ = dz === 0 ? Infinity : (dz > 0 ? cz + 1 - z0 : z0 - cz) * deltaZ;
   for (let guard = 0; guard < 512; guard++) {
-    if (!map.passable(cx, cz)) return false;
+    if (!map.passable(cx, cz, mobility)) return false;
     if (cx === ex && cz === ez) return true;
     if (Math.abs(maxX - maxZ) < 1e-9) {
       // Through a corner: both side cells must be open too.
-      if (!map.passable(cx + stepX, cz) || !map.passable(cx, cz + stepZ)) return false;
+      if (!map.passable(cx + stepX, cz, mobility) || !map.passable(cx, cz + stepZ, mobility)) {
+        return false;
+      }
       cx += stepX;
       cz += stepZ;
       maxX += deltaX;
@@ -191,7 +206,13 @@ export function lineClear(map: GameMap, x0: number, z0: number, x1: number, z1: 
 }
 
 /** Straightens a cell path into as few waypoints as the open ground allows. */
-export function smoothPath(map: GameMap, fromX: number, fromZ: number, cells: number[]): Point[] {
+export function smoothPath(
+  map: GameMap,
+  fromX: number,
+  fromZ: number,
+  cells: number[],
+  mobility: Mobility = 'ground',
+): Point[] {
   const points = cells.map((cell) => ({ x: map.cellX(cell) + 0.5, z: map.cellZ(cell) + 0.5 }));
   const result: Point[] = [];
   let anchorX = fromX;
@@ -202,7 +223,7 @@ export function smoothPath(map: GameMap, fromX: number, fromZ: number, cells: nu
     // Look ahead a bounded distance for the furthest point in a straight, clear line.
     for (let j = Math.min(points.length - 1, i + 24); j > i; j--) {
       const p = points[j];
-      if (p && lineClear(map, anchorX, anchorZ, p.x, p.z)) {
+      if (p && lineClear(map, anchorX, anchorZ, p.x, p.z, mobility)) {
         far = j;
         break;
       }

@@ -35,6 +35,9 @@ export function tickUnit(world: World, unit: Unit): void {
   coolDown(unit);
   if (unit.inside) return;
   heal(unit);
+  // Submarines dive again a little while after firing.
+  unit.submerged = unit.def.submarine === true && unit.sinceFired > 2.5;
+  carry(world, unit);
   if (unit.digging > 0) {
     unit.digging = Math.max(0, unit.digging - DT);
     return;
@@ -302,7 +305,111 @@ function tickGuard(world: World, unit: Unit, x: number, z: number): void {
   }
 }
 
+/** Passengers ride along with their transport. */
+function carry(world: World, unit: Unit): void {
+  for (const id of unit.passengers) {
+    const passenger = world.unit(id);
+    if (!passenger) continue;
+    passenger.x = passenger.px = unit.x;
+    passenger.z = passenger.pz = unit.z;
+  }
+}
+
+/** Slots a unit takes up in a transport, or Infinity if it can't ride in this one. */
+export function seatCost(transport: Unit, rider: Unit): number {
+  const room = transport.def.transport;
+  if (!room || rider === transport || rider.owner !== transport.owner) return Infinity;
+  if (rider.def.flies || rider.def.naval || rider.def.amphibious || rider.def.transport)
+    return Infinity;
+  if (rider.def.kind === 'infantry') return 1;
+  if (rider.def.kind === 'vehicle' && room.vehicles && !rider.def.deploysToHq) return 4;
+  return Infinity;
+}
+
+export function seatsFree(world: World, transport: Unit): number {
+  const room = transport.def.transport?.slots ?? 0;
+  let used = 0;
+  for (const id of transport.passengers) {
+    const rider = world.unit(id);
+    if (rider) used += rider.def.kind === 'infantry' ? 1 : 4;
+  }
+  return room - used;
+}
+
+function board(world: World, unit: Unit, transport: Unit): void {
+  const cost = seatCost(transport, unit);
+  if (cost > seatsFree(world, transport)) {
+    finish(unit);
+    return;
+  }
+  const reach = transport.def.radius + unit.def.radius + 0.45;
+  if (Math.hypot(unit.x - transport.x, unit.z - transport.z) > reach) {
+    unit.repathTimer -= DT;
+    if (!isMoving(unit) || unit.repathTimer <= 0) {
+      unit.repathTimer = 0.8;
+      moveTo(world, unit, transport.x, transport.z);
+    }
+    advance(world, unit);
+    return;
+  }
+  stopMoving(unit);
+  transport.passengers.push(unit.id);
+  unit.inside = transport.id;
+  unit.target = 0;
+  unit.dugIn = false;
+  unit.order = IDLE;
+  world.emit({ kind: 'sound', sound: 'deploy', x: unit.x, z: unit.z });
+}
+
+/** Lets everyone out onto dry land around a transport. Returns false if there's nowhere. */
+export function unload(world: World, transport: Unit): boolean {
+  const map = world.map;
+  const riders = transport.passengers
+    .map((id) => world.unit(id))
+    .filter((rider) => rider !== undefined);
+  if (riders.length === 0) return false;
+  const taken = new Set<number>();
+  let placed = 0;
+  for (const rider of riders) {
+    let cell = -1;
+    for (let radius = 1; radius <= 3 && cell < 0; radius++) {
+      for (let dz = -radius; dz <= radius && cell < 0; dz++) {
+        for (let dx = -radius; dx <= radius; dx++) {
+          const x = Math.floor(transport.x) + dx;
+          const z = Math.floor(transport.z) + dz;
+          if (!map.passable(x, z)) continue;
+          const index = map.index(x, z);
+          if (taken.has(index) && rider.def.kind !== 'infantry') continue;
+          cell = index;
+          break;
+        }
+      }
+    }
+    if (cell < 0) break;
+    if (rider.def.kind !== 'infantry') taken.add(cell);
+    rider.inside = 0;
+    rider.x = rider.px = map.cellX(cell) + 0.3 + world.rng.next() * 0.4;
+    rider.z = rider.pz = map.cellZ(cell) + 0.3 + world.rng.next() * 0.4;
+    rider.order = IDLE;
+    rider.guardX = rider.x;
+    rider.guardZ = rider.z;
+    transport.passengers = transport.passengers.filter((id) => id !== rider.id);
+    placed++;
+  }
+  if (placed === 0) {
+    world.announce(transport.owner, 'Can’t unload here.', 'bad', 'unload', 2);
+    return false;
+  }
+  world.emit({ kind: 'sound', sound: 'deploy', x: transport.x, z: transport.z });
+  return true;
+}
+
 function tickEnter(world: World, unit: Unit, id: number): void {
+  const carrier = world.unit(id);
+  if (carrier) {
+    board(world, unit, carrier);
+    return;
+  }
   const structure = world.structure(id);
   if (!structure) {
     finish(unit);
@@ -402,6 +509,11 @@ function consume(world: World, unit: Unit): void {
 function deploy(world: World, unit: Unit): void {
   const def = unit.def;
   stopMoving(unit);
+  if (def.transport) {
+    unload(world, unit);
+    finish(unit);
+    return;
+  }
   if (def.deploysToHq) {
     const player = world.players[unit.owner];
     if (!player) return;

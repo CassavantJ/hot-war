@@ -43,6 +43,10 @@ const CURSORS: Record<Action, string> = {
   ),
   place: 'crosshair',
   noplace: 'not-allowed',
+  target: svgCursor(
+    `<circle cx='16' cy='16' r='12' ${OUTLINE}/><circle cx='16' cy='16' r='5' ${OUTLINE}/>` +
+      `<circle cx='16' cy='16' r='12' stroke='#ffb13d' stroke-width='2' fill='none'/><circle cx='16' cy='16' r='5' stroke='#ffb13d' stroke-width='2' fill='none'/><path d='M16 1 L16 8 M16 24 L16 31 M1 16 L8 16 M24 16 L31 16' stroke='#ffb13d' stroke-width='2'/>`,
+  ),
 };
 
 export function cursorFor(action: Action): string {

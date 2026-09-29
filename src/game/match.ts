@@ -1,5 +1,6 @@
 import { DT } from '../sim/entities';
 import { WEAPONS } from '../sim/rules';
+import { createMission, type MissionDef } from '../sim/mission';
 import { createGame } from '../sim/setup';
 import type { GameEvent, GameSettings, Tone, World } from '../sim/world';
 import { GameView } from '../view/GameView';
@@ -26,7 +27,8 @@ export const SPEEDS = [
 export class Match {
   readonly world: World;
   readonly audio: Audio;
-  readonly settings: GameSettings;
+  readonly settings: GameSettings | null;
+  readonly mission: MissionDef | null;
   view: GameView | null = null;
   controller: Controller | null = null;
   speed = 1;
@@ -47,9 +49,18 @@ export class Match {
   private tabHandler: (tab: number | 'next') => void = () => undefined;
   private menuHandler: () => void = () => undefined;
 
-  constructor(settings: GameSettings, audio: Audio) {
-    this.settings = settings;
-    this.world = createGame(settings);
+  constructor(source: { settings: GameSettings } | { mission: MissionDef }, audio: Audio) {
+    if ('mission' in source) {
+      this.settings = null;
+      this.mission = source.mission;
+      this.world = createMission(source.mission);
+      // Missions open on the briefing, paused.
+      this.paused = true;
+    } else {
+      this.settings = source.settings;
+      this.mission = null;
+      this.world = createGame(source.settings);
+    }
     this.audio = audio;
     this.speed = 1;
   }
@@ -57,6 +68,7 @@ export class Match {
   /** Puts the battle on screen inside `container` and starts the clock. */
   attach(container: HTMLElement, canvas: HTMLCanvasElement, overlay: HTMLCanvasElement): void {
     const view = new GameView(canvas, this.world, this.world.local);
+    if (this.mission) view.focus.set(this.mission.camera.x, this.mission.camera.z);
     const controller = new Controller(this.world, view, this.world.local);
     controller.onCue = (cue) => {
       this.audio.play(cue);

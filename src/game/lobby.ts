@@ -18,6 +18,7 @@ export interface LobbySetup {
   startingUnits: StartingUnits;
   shortGame: boolean;
   crates: boolean;
+  superweapons: boolean;
   speed: number;
   seats: SeatSetup[];
 }
@@ -30,6 +31,7 @@ export const DEFAULT_SETUP: LobbySetup = {
   startingUnits: 'squad',
   shortGame: true,
   crates: true,
+  superweapons: true,
   speed: 1,
   seats: [
     { faction: 'accord', color: COLORS[1].value, team: 0, ai: null },
@@ -85,6 +87,7 @@ export function toSettings(setup: LobbySetup): GameSettings {
     startingUnits: setup.startingUnits,
     shortGame: setup.shortGame,
     crates: setup.crates,
+    superweapons: setup.superweapons,
     players,
   };
 }

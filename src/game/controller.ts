@@ -1,5 +1,4 @@
 import type { Entity, Structure, Unit } from '../sim/entities';
-import { GROUND } from '../sim/map';
 import {
   orderAttack,
   orderAttackGround,
@@ -21,7 +20,9 @@ import {
   toggleRepair,
   type PlacementCheck,
 } from '../sim/production';
-import { STRUCTURES, WEAPONS, type StructureType } from '../sim/rules';
+import { mobilityOf, STRUCTURES, SUPERWEAPONS, WEAPONS, type StructureType } from '../sim/rules';
+import { fireSuperweapon, isReady } from '../sim/superweapons';
+import { seatCost, seatsFree } from '../sim/units';
 import type { World } from '../sim/world';
 import type { GameView } from '../view/GameView';
 
@@ -30,7 +31,9 @@ export type Mode =
   | { kind: 'place'; type: StructureType }
   | { kind: 'sell' }
   | { kind: 'repair' }
-  | { kind: 'attackMove' };
+  | { kind: 'attackMove' }
+  /** Aiming a superweapon (the Phase Gate takes two clicks: from, then to). */
+  | { kind: 'superweapon'; id: number; from: { x: number; z: number } | null };
 
 export type Action =
   | 'none'
@@ -46,7 +49,8 @@ export type Action =
   | 'sell'
   | 'repair'
   | 'place'
-  | 'noplace';
+  | 'noplace'
+  | 'target';
 
 export interface Marker {
   x: number;
@@ -95,6 +99,14 @@ export class Controller {
     this.world = world;
     this.view = view;
     this.local = local;
+  }
+
+  get pointerX(): number {
+    return this.pointer.x;
+  }
+
+  get pointerY(): number {
+    return this.pointer.y;
   }
 
   // Queries ------------------------------------------------------------------------------------
@@ -354,6 +366,10 @@ export class Controller {
       return;
     }
     this.placement = null;
+    if (this.mode.kind === 'superweapon') {
+      this.action = 'target';
+      return;
+    }
     this.action = this.resolve(unit ?? structure, x, y, {
       shift: false,
       ctrl: this.keys.has('control'),
@@ -417,8 +433,16 @@ export class Controller {
     if (mods.alt || this.mode.kind === 'attackMove') return 'move';
     if (target) {
       if (target.entity === 'unit' && this.mine(target)) {
-        if (this.selection.has(target.id) && (target.def.deploysToHq || target.def.dugInWeapon))
-          return 'deploy';
+        const deployable =
+          target.def.deploysToHq === true ||
+          target.def.dugInWeapon !== undefined ||
+          target.passengers.length > 0;
+        if (this.selection.has(target.id) && deployable) return 'deploy';
+        // Climb aboard a transport with room.
+        if (target.def.transport && !this.selection.has(target.id)) {
+          const free = seatsFree(world, target);
+          if (units.some((unit) => seatCost(target, unit) <= free)) return 'enter';
+        }
         return 'select';
       }
       if (target.entity === 'structure') {
@@ -466,13 +490,11 @@ export class Controller {
     if (!map.inside(cx, cz)) return 'nogo';
     const cell = map.index(cx, cz);
     if (map.oreAt(cell) > 0 && units.some((unit) => unit.def.harvester)) return 'harvest';
-    const ground_ = map.groundAt(cell);
-    if (
-      (ground_ === GROUND.water || ground_ === GROUND.cliff) &&
-      units.every((unit) => !unit.def.flies)
-    )
-      return 'nogo';
-    return 'move';
+    // Somebody selected has to be able to go there: ships on water, tanks on land.
+    const reachable = units.some(
+      (unit) => unit.def.flies !== undefined || !map.isBlocked(cell, mobilityOf(unit.def)),
+    );
+    return reachable ? 'move' : 'nogo';
   }
 
   // Clicks -------------------------------------------------------------------------------------
@@ -490,6 +512,10 @@ export class Controller {
       } else {
         this.onCue('error');
       }
+      return;
+    }
+    if (this.mode.kind === 'superweapon') {
+      this.aimSuperweapon(this.mode.id, this.mode.from);
       return;
     }
     const unit = this.view.pickUnit(x, y);
@@ -537,6 +563,20 @@ export class Controller {
         return;
       case 'enter':
       case 'capture':
+        if (unit?.def.transport) {
+          const free = seatsFree(world, unit);
+          let used = 0;
+          const riders = units.filter((candidate) => {
+            const cost = seatCost(unit, candidate);
+            if (used + cost > free) return false;
+            used += cost;
+            return true;
+          });
+          orderEnter(riders, unit);
+          this.markers.push({ x: unit.x, z: unit.z, kind: 'move', age: 0 });
+          this.onCue('move');
+          return;
+        }
         if (structure) {
           const movers = units.filter((candidate) =>
             enterable(candidate, structure, this.local, world),
@@ -580,6 +620,44 @@ export class Controller {
           this.selectedStructure = 0;
         }
     }
+  }
+
+  /** Starts aiming one of your superweapons. */
+  startSuperweapon(id: number): void {
+    const structure = this.world.structure(id);
+    if (!structure || !isReady(structure)) {
+      this.onCue('error');
+      return;
+    }
+    this.setMode({ kind: 'superweapon', id, from: null });
+  }
+
+  private aimSuperweapon(id: number, from: { x: number; z: number } | null): void {
+    const structure = this.world.structure(id);
+    const { x, y } = this.pointer;
+    const spot = this.view.screenToWorld(x, y);
+    if (!structure?.def.superweapon) {
+      this.setMode({ kind: 'normal' });
+      return;
+    }
+    if (structure.def.superweapon === 'phase' && !from) {
+      const radius = SUPERWEAPONS.phase.radius;
+      const hasUnits = this.world
+        .unitsNear(spot.x, spot.z, radius)
+        .some((unit) => unit.owner === this.local && !unit.def.flies && !unit.def.naval);
+      if (!hasUnits) {
+        this.onCue('error');
+        return;
+      }
+      this.setMode({ kind: 'superweapon', id, from: spot });
+      this.onCue('click');
+      return;
+    }
+    const fired = from
+      ? fireSuperweapon(this.world, structure, from, spot)
+      : fireSuperweapon(this.world, structure, spot);
+    this.onCue(fired ? 'attack' : 'error');
+    if (fired) this.setMode({ kind: 'normal' });
   }
 
   private select(target: Entity, add: boolean): void {

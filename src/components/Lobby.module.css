@@ -42,6 +42,54 @@
   color: #9aa6b2;
 }
 
+.modeTabs {
+  display: flex;
+  justify-content: center;
+  gap: 0.4rem;
+}
+
+.modeTab {
+  padding: 0.5rem 1.4rem;
+  border-radius: 999px;
+  background: #1c232c;
+  border: 1px solid #34404d;
+  font-weight: 800;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  font-size: 0.8rem;
+  color: #9aa6b2;
+}
+
+.modeTab[aria-selected='true'] {
+  background: #2b2a22;
+  border-color: #ffb24a;
+  color: #fff;
+}
+
+.campaign {
+  display: grid;
+  gap: 0.4rem;
+}
+
+.campaignName {
+  margin: 0.4rem 0 0;
+  font-size: 0.95rem;
+  font-weight: 800;
+}
+
+.campaignName[data-faction='accord'] {
+  color: #6fa8ff;
+}
+
+.campaignName[data-faction='bloc'] {
+  color: #ff7a5a;
+}
+
+.map:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
 .columns {
   display: grid;
   grid-template-columns: minmax(16rem, 22rem) minmax(0, 1fr);

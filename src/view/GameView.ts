@@ -7,7 +7,7 @@ import { ModelBatches } from './batches';
 import { Decals, Particles, Streaks, type Rgba } from './effects';
 import { crateGeometry, structureModel, unitModel, type PartName } from './models';
 import { Shape, teamMaterial } from './shapes';
-import { ShroudLayer, Terrain } from './terrain';
+import { ShroudLayer, Terrain, WATER_LEVEL } from './terrain';
 
 /** Camera elevation: how steeply we look down on the battlefield. */
 const ELEVATION = (37 * Math.PI) / 180;
@@ -239,7 +239,35 @@ export class GameView {
   }
 
   unitVisible(unit: Unit): boolean {
-    return !unit.inside && (unit.owner === this.local || this.visibleCell(unit.x, unit.z));
+    if (unit.inside) return false;
+    if (unit.owner === this.local) return true;
+    if (unit.submerged && !this.detected(unit)) return false;
+    return this.visibleCell(unit.x, unit.z);
+  }
+
+  /** Is this enemy submarine within sonar range of something of ours? */
+  private detected(sub: Unit): boolean {
+    for (const unit of this.world.units) {
+      if (unit.owner !== this.local || unit.inside) continue;
+      const sonar = unit.def.weapons.some((id) => WEAPONS[id].underwater === true);
+      if (sonar && Math.hypot(unit.x - sub.x, unit.z - sub.z) < 6) return true;
+    }
+    return false;
+  }
+
+  /** How high a unit sits: ships on the water, submarines under it, hovercraft on either. */
+  private baseHeight(unit: Unit, x: number, z: number): number {
+    const def = unit.def;
+    if (def.naval)
+      return (
+        WATER_LEVEL + (unit.submerged ? -0.3 : 0.02) + Math.sin(this.time * 1.6 + unit.id) * 0.015
+      );
+    if (def.amphibious) {
+      const map = this.world.map;
+      const onWater = map.isWater(map.cellAt(x, z));
+      return (onWater ? WATER_LEVEL : 0) + 0.04 + Math.sin(this.time * 3 + unit.id) * 0.01;
+    }
+    return 0;
   }
 
   structureVisible(structure: Structure): boolean {
@@ -297,7 +325,7 @@ export class GameView {
         break;
       case 'explode':
         this.explosion(event.at, event.size);
-        if (event.at.y < 0.5) this.decals.addScorch(event.at.x, event.at.z, 0.6 + event.size * 0.8);
+        if (event.at.y < 0.5) this.scorch(event.at.x, event.at.z, 0.6 + event.size * 0.8);
         break;
       case 'fall':
         this.corpses.push({
@@ -326,6 +354,33 @@ export class GameView {
       case 'warp':
         this.warpFlash(event.from);
         this.warpFlash(event.to);
+        break;
+      case 'storm':
+        this.storm(event.x, event.z, event.radius, event.time);
+        break;
+      case 'bolt':
+        this.bolt(event.x, event.z);
+        break;
+      case 'launch':
+        this.launch(event.from, event.to, event.time);
+        break;
+      case 'shield':
+        for (let i = 0; i < 60; i++) {
+          const angle = (i / 60) * Math.PI * 2;
+          this.fire.emit(
+            event.x + Math.cos(angle) * event.radius,
+            0.2,
+            event.z + Math.sin(angle) * event.radius,
+            0,
+            1.2,
+            0,
+            0.9,
+            0.3,
+            0.05,
+            [1, 0.25, 0.15, 1],
+            [1, 0.1, 0, 0],
+          );
+        }
         break;
       case 'crate':
         for (let i = 0; i < 24; i++) {
@@ -503,10 +558,109 @@ export class GameView {
             ? 0.45
             : 0.35;
     this.explosion(at, size);
-    if (size >= 1 && at.y < 0.5) this.decals.addScorch(at.x, at.z, size * 1.4);
+    if (size >= 1 && at.y < 0.5) this.scorch(at.x, at.z, size * 1.4);
+  }
+
+  /** Dark clouds churning over the storm's area while it lasts. */
+  private storm(x: number, z: number, radius: number, duration: number): void {
+    const end = this.time + duration;
+    const puff = () => {
+      if (this.time > end) return;
+      for (let i = 0; i < 6; i++) {
+        const angle = Math.random() * Math.PI * 2;
+        const distance = Math.sqrt(Math.random()) * radius;
+        this.smoke.emit(
+          x + Math.cos(angle) * distance,
+          3.4 + Math.random() * 0.5,
+          z + Math.sin(angle) * distance,
+          rand(0.4),
+          0,
+          rand(0.4),
+          1.6,
+          1.6,
+          2.6,
+          [0.12, 0.13, 0.17, 0.75],
+          [0.2, 0.2, 0.25, 0],
+        );
+      }
+      this.timed.push({ at: this.time + 0.12, run: puff });
+    };
+    puff();
+  }
+
+  private bolt(x: number, z: number): void {
+    let px = x + rand(0.6);
+    let pz = z + rand(0.6);
+    let py = 3.6;
+    // A jagged path down from the clouds.
+    while (py > 0.1) {
+      const ny = Math.max(0, py - 0.5 - Math.random() * 0.4);
+      const nx = ny === 0 ? x : px + rand(0.35);
+      const nz = ny === 0 ? z : pz + rand(0.35);
+      this.streaks.add({ x: px, y: py, z: pz }, { x: nx, y: ny, z: nz }, 0.07, '#c9e4ff', 0.18);
+      this.streaks.add({ x: px, y: py, z: pz }, { x: nx, y: ny, z: nz }, 0.02, '#ffffff', 0.12);
+      px = nx;
+      py = ny;
+      pz = nz;
+    }
+    this.fire.emit(x, 0.3, z, 0, 0, 0, 0.2, 2.4, 0.4, [0.8, 0.9, 1, 1], [0.3, 0.4, 1, 0]);
+    this.sparks({ x, y: 0.1, z }, 10, 3);
+    this.scorch(x, z, 0.9);
+  }
+
+  /** The missile climbs out of its silo, then drops on the target just before it lands. */
+  private launch(
+    from: { x: number; z: number },
+    to: { x: number; z: number },
+    flight: number,
+  ): void {
+    const start = this.time;
+    const climb = () => {
+      const t = this.time - start;
+      if (t > 1.6) return;
+      const y = 0.5 + t * t * 4;
+      this.fire.emit(from.x, y, from.z, rand(0.2), -1, rand(0.2), 0.3, 0.5, 0.1, FIRE, FIRE_END);
+      this.smoke.emit(
+        from.x + rand(0.3),
+        y - 0.3,
+        from.z + rand(0.3),
+        rand(0.3),
+        0.2,
+        rand(0.3),
+        2.5,
+        0.6,
+        1.6,
+        [0.8, 0.78, 0.74, 0.6],
+        [0.8, 0.8, 0.8, 0],
+      );
+      this.timed.push({ at: this.time + 0.03, run: climb });
+    };
+    climb();
+    const fall = () => {
+      const left = start + flight - this.time;
+      if (left <= 0) return;
+      const y = Math.max(0.2, left * 6);
+      this.fire.emit(to.x, y, to.z, 0, 0, 0, 0.08, 0.5, 0.2, [1, 0.9, 0.6, 1], FIRE_END);
+      this.smoke.emit(
+        to.x + rand(0.1),
+        y + 0.4,
+        to.z + rand(0.1),
+        0,
+        0.3,
+        0,
+        1.2,
+        0.3,
+        0.8,
+        [0.8, 0.78, 0.74, 0.5],
+        [0.8, 0.8, 0.8, 0],
+      );
+      this.timed.push({ at: this.time + 0.03, run: fall });
+    };
+    this.timed.push({ at: start + flight - 1, run: fall });
   }
 
   explosion(at: Vec3, size: number): void {
+    if (size >= 3) this.mushroom(at, size);
     const count = Math.round(8 + size * 16);
     for (let i = 0; i < count; i++) {
       const speed = size * (1 + Math.random() * 2);
@@ -555,6 +709,93 @@ export class GameView {
       );
     }
     this.sparks(at, Math.round(4 + size * 8), 2.5 * size + 1);
+  }
+
+  /** A superweapon-sized blast: a flash, a shock ring and a rising column of smoke. */
+  private mushroom(at: Vec3, size: number): void {
+    this.fire.emit(
+      at.x,
+      1,
+      at.z,
+      0,
+      0,
+      0,
+      0.5,
+      size * 5,
+      size * 2,
+      [1, 1, 0.9, 1],
+      [1, 0.5, 0.1, 0],
+    );
+    for (let i = 0; i < 80; i++) {
+      const angle = (i / 80) * Math.PI * 2;
+      this.fire.emit(
+        at.x,
+        0.2,
+        at.z,
+        Math.cos(angle) * size * 2.2,
+        0.2,
+        Math.sin(angle) * size * 2.2,
+        0.7,
+        0.8,
+        0.3,
+        FIRE,
+        FIRE_END,
+      );
+      this.smoke.emit(
+        at.x,
+        0.3,
+        at.z,
+        Math.cos(angle) * size * 1.4,
+        0.3,
+        Math.sin(angle) * size * 1.4,
+        1.8,
+        0.8,
+        2,
+        [0.35, 0.3, 0.26, 0.6],
+        SMOKE_END,
+      );
+    }
+    const end = this.time + 3.5;
+    const column = () => {
+      if (this.time > end) return;
+      const rise = 1 - (end - this.time) / 3.5;
+      for (let i = 0; i < 4; i++) {
+        this.smoke.emit(
+          at.x + rand(0.5),
+          0.5 + rise * 3,
+          at.z + rand(0.5),
+          rand(0.6),
+          1.2,
+          rand(0.6),
+          2.5,
+          1.2,
+          3 + rise * 2,
+          [0.3, 0.26, 0.22, 0.7],
+          [0.4, 0.38, 0.36, 0],
+        );
+        this.fire.emit(
+          at.x + rand(0.4),
+          0.3 + rise * 2.5,
+          at.z + rand(0.4),
+          0,
+          1,
+          0,
+          0.6,
+          1,
+          0.4,
+          FIRE,
+          FIRE_END,
+        );
+      }
+      this.timed.push({ at: this.time + 0.06, run: column });
+    };
+    column();
+  }
+
+  /** A burn mark, on dry land only. */
+  private scorch(x: number, z: number, size: number): void {
+    const map = this.world.map;
+    if (!map.isWater(map.cellAt(x, z))) this.decals.addScorch(x, z, size);
   }
 
   private sparks(at: Vec3, count: number, speed: number): void {
@@ -717,6 +958,36 @@ export class GameView {
   }
 
   private structureEffects(structure: Structure, dt: number): void {
+    if (structure.shieldUntil > this.world.time && Math.random() < dt * 20) {
+      this.fire.emit(
+        structure.x + Math.random() * structure.w,
+        0.2 + Math.random() * structure.def.height,
+        structure.z + Math.random() * structure.h,
+        0,
+        0.5,
+        0,
+        0.6,
+        0.25,
+        0.05,
+        [1, 0.2, 0.1, 1],
+        [1, 0.1, 0, 0],
+      );
+    }
+    if (structure.def.superweapon && structure.superCharge >= 1 && Math.random() < dt * 6) {
+      this.fire.emit(
+        structure.cx + rand(0.4),
+        structure.def.height + 0.2,
+        structure.cz + rand(0.4),
+        0,
+        0.6,
+        0,
+        0.8,
+        0.25,
+        0.05,
+        [0.6, 0.9, 1, 1],
+        [0.3, 0.4, 1, 0],
+      );
+    }
     if (structure.built < 1) {
       if (Math.random() < dt * 12)
         this.smoke.emit(
@@ -798,7 +1069,7 @@ export class GameView {
       const facing = unit.pfacing + angleDiff(unit.pfacing, unit.facing) * alpha;
       const turret = unit.pturret + angleDiff(unit.pturret, unit.turret) * alpha;
       const def = unit.def;
-      let bob = 0;
+      let bob = this.baseHeight(unit, x, z);
       if (def.flies === 'jumpjet' || def.flies === 'airship')
         bob = Math.sin(time * 2 + unit.id) * 0.05;
       this.euler.set(0, -facing, 0);
@@ -839,6 +1110,36 @@ export class GameView {
 
   private unitEffects(unit: Unit, x: number, z: number, alt: number, dt: number): void {
     const def = unit.def;
+    if (unit.shieldUntil > this.world.time && Math.random() < dt * 14) {
+      this.fire.emit(
+        x + rand(0.3),
+        alt + 0.1 + Math.random() * 0.4,
+        z + rand(0.3),
+        0,
+        0.4,
+        0,
+        0.5,
+        0.18,
+        0.04,
+        [1, 0.2, 0.1, 1],
+        [1, 0.1, 0, 0],
+      );
+    }
+    if (def.naval && unit.moving && !unit.submerged && Math.random() < dt * 12) {
+      this.smoke.emit(
+        x - Math.cos(unit.facing) * def.radius,
+        WATER_LEVEL + 0.03,
+        z - Math.sin(unit.facing) * def.radius,
+        rand(0.2),
+        0.05,
+        rand(0.2),
+        1.2,
+        0.15,
+        0.5,
+        [0.95, 0.97, 1, 0.7],
+        [1, 1, 1, 0],
+      );
+    }
     if (unit.step === 'mining' && unit.order.kind === 'harvest' && Math.random() < dt * 10) {
       this.smoke.emit(
         x + Math.cos(unit.facing) * 0.4,
@@ -950,6 +1251,22 @@ export class GameView {
       if (!this.visibleCell(x, z)) continue;
       if (shot.kind === 'shell') {
         this.fire.emit(x, y, z, 0, 0, 0, 0.04, 0.16, 0.08, [1, 0.9, 0.6, 1], [1, 0.5, 0.2, 0]);
+        continue;
+      }
+      if (shot.kind === 'torpedo') {
+        this.smoke.emit(
+          x,
+          WATER_LEVEL + 0.02,
+          z,
+          0,
+          0.05,
+          0,
+          0.9,
+          0.12,
+          0.35,
+          [0.92, 0.96, 1, 0.8],
+          [1, 1, 1, 0],
+        );
         continue;
       }
       const dx = shot.x - shot.px;

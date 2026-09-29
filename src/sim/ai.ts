@@ -11,8 +11,10 @@ import {
   toggleRepair,
 } from './production';
 import { Random } from './random';
+import { fireSuperweapon, isReady } from './superweapons';
 import {
   STRUCTURES,
+  SUPERWEAPONS,
   UNITS,
   type Faction,
   type Role,
@@ -78,11 +80,27 @@ const BUILD_PLAN: [Role, number, number][] = [
   ['refinery', 2, 0],
   ['radar', 1, 0],
   ['repair', 1, 3],
+  ['naval', 1, 5],
   ['lab', 1, 5],
   ['factory', 2, 9],
   ['barracks', 2, 10],
   ['refinery', 3, 12],
+  ['super', 1, 13],
+  ['super', 2, 19],
 ];
+
+const NAVAL_MIX: Record<Faction, [UnitType, number][]> = {
+  accord: [
+    ['frigate', 3],
+    ['cruiser', 1.2],
+    ['monitor', 1.8],
+  ],
+  bloc: [
+    ['sub', 3],
+    ['flakboat', 1.2],
+    ['missileship', 1.8],
+  ],
+};
 
 const INFANTRY_MIX: Record<Faction, [UnitType, number][]> = {
   accord: [
@@ -120,12 +138,13 @@ const DEFENSES: Record<Faction, StructureType[]> = {
   bloc: ['b_nest', 'b_bastion', 'b_flak', 'b_bastion', 'b_nest', 'b_bastion', 'b_flak'],
 };
 
-function structureFor(faction: Faction, role: Role): StructureType | null {
-  const def = Object.values(STRUCTURES).find(
+/** A faction's structure for a role (the nth, where a faction has several, like superweapons). */
+function structureFor(faction: Faction, role: Role, nth = 0): StructureType | null {
+  const defs = Object.values(STRUCTURES).filter(
     (candidate) =>
       candidate.faction === faction && candidate.role === role && candidate.tab !== null,
   );
-  return def?.id ?? null;
+  return defs[nth]?.id ?? defs[0]?.id ?? null;
 }
 
 function isCombat(unit: Unit): boolean {
@@ -145,6 +164,13 @@ export class AiBrain {
   private readonly attackers = new Set<number>();
   private enemy = -1;
   private defenseCount = 0;
+  /** The nearest open water to the base, if it's part of a sea big enough for ships. */
+  private coast: { x: number; z: number } | null | undefined = undefined;
+  /** Build towards the coast so a shipyard can reach the water. */
+  private creep = false;
+  /** Campaign missions can stop a computer player building or attacking. */
+  private builds = true;
+  private attacks = true;
 
   constructor(world: World, player: Player) {
     this.world = world;
@@ -154,20 +180,29 @@ export class AiBrain {
     this.timer = 0.5 + player.index * 0.13;
   }
 
+  configure(options: { builds: boolean; attacks: boolean }): void {
+    this.builds = options.builds;
+    this.attacks = options.attacks;
+  }
+
   update(): void {
     this.timer -= DT;
     if (this.timer > 0 || this.player.defeated) return;
     this.timer = this.tuning.think;
-    this.deployTrucks();
     const hq = this.hq();
-    if (hq) {
-      this.placeReady(hq);
-      this.planBase();
-      this.planDefenses();
-      this.repairBase();
+    if (this.builds) {
+      this.deployTrucks();
+      if (hq) {
+        this.placeReady(hq);
+        this.planBase();
+        this.planDefenses();
+      }
+      this.trainUnits();
     }
-    this.trainUnits();
+    if (hq) this.repairBase();
     this.manageUnits(hq);
+    if (this.attacks) this.manageFleet();
+    this.useSuperweapons();
   }
 
   private get minutes(): number {
@@ -239,9 +274,17 @@ export class AiBrain {
     let next: StructureType | null = null;
     for (const [role, count, minute] of BUILD_PLAN) {
       if (this.minutes < minute * (player.ai === 'hard' ? 0.6 : 1)) continue;
-      if (player.ai === 'easy' && (role === 'lab' || count > 2)) continue;
-      if (this.roleCount(role) >= count) continue;
-      const type = structureFor(player.faction, role);
+      if (
+        player.ai === 'easy' &&
+        (role === 'lab' || role === 'super' || role === 'naval' || count > 2)
+      ) {
+        continue;
+      }
+      if (role === 'naval' && !this.shipyardSpot()) continue;
+      if (role === 'super' && player.ai !== 'hard' && count > 1) continue;
+      const have = this.roleCount(role);
+      if (have >= count) continue;
+      const type = structureFor(player.faction, role, role === 'super' ? have : 0);
       if (type && available(this.world, player, type)) {
         next = type;
         break;
@@ -316,6 +359,15 @@ export class AiBrain {
     const wantInfantry = player.has('factory')
       ? infantryValue <= (infantryValue + vehicleValue) * share + 600
       : army.length < 8;
+    // A shipyard means a fleet: ships come before more tanks until there are enough.
+    if (player.has('naval') && player.ai !== 'easy' && player.queues.naval.items.length === 0) {
+      const fleet = units.filter((unit) => unit.def.naval).length;
+      const wanted = (player.ai === 'hard' ? 6 : 4) + Math.floor(this.minutes / 8);
+      if (fleet < wanted && player.credits > reserve + 200) {
+        const type = this.pick(NAVAL_MIX[player.faction], units);
+        if (type) startBuild(world, player, type);
+      }
+    }
     let started = false;
     if (player.queues.vehicle.items.length < 2 && player.credits > reserve + 300) {
       const type = this.pick(VEHICLE_MIX[player.faction], units);
@@ -395,7 +447,9 @@ export class AiBrain {
     this.sendEngineers(units, base.cx, base.cz);
     // Defend the base first.
     const threat = this.threat(base.cx, base.cz);
-    const homeGuard = units.filter((unit) => isCombat(unit) && !this.attackers.has(unit.id));
+    const homeGuard = units.filter(
+      (unit) => isCombat(unit) && !unit.def.naval && !this.attackers.has(unit.id),
+    );
     if (threat) {
       const responders = homeGuard.filter(
         (unit) => unit.order.kind === 'idle' || (unit.order.kind === 'move' && !unit.order.attack),
@@ -413,6 +467,7 @@ export class AiBrain {
       this.tuning.firstWave + this.waves * this.tuning.waveGrowth,
     );
     if (
+      this.attacks &&
       !threat &&
       enemy &&
       world.time >= this.tuning.firstAttack &&
@@ -627,10 +682,152 @@ export class AiBrain {
     }
   }
 
+  /** Open water near the base that ships could sail out from, worked out once. */
+  private coastal(): { x: number; z: number } | null {
+    if (this.coast !== undefined) return this.coast;
+    const hq = this.hq();
+    if (!hq) return null;
+    const map = this.world.map;
+    let best: { x: number; z: number; cell: number } | null = null;
+    let bestDistance = 15;
+    for (let z = Math.floor(hq.cz - 15); z <= hq.cz + 15; z++) {
+      for (let x = Math.floor(hq.cx - 15); x <= hq.cx + 15; x++) {
+        if (!map.inside(x, z)) continue;
+        const cell = map.index(x, z);
+        if (map.isBlocked(cell, 'naval')) continue;
+        const distance = Math.hypot(x + 0.5 - hq.cx, z + 0.5 - hq.cz);
+        if (distance < bestDistance) {
+          bestDistance = distance;
+          best = { x: x + 0.5, z: z + 0.5, cell };
+        }
+      }
+    }
+    if (best) {
+      const region = map.regionOf(best.cell, 'naval');
+      let size = 0;
+      for (let cell = 0; cell < map.ground.length && size < 200; cell++) {
+        if (map.regionOf(cell, 'naval') === region) size++;
+      }
+      if (size < 200) best = null;
+    }
+    this.coast = best ? { x: best.x, z: best.z } : null;
+    return this.coast;
+  }
+
+  /**
+   * Somewhere a shipyard could go right now. If the coast is out of reach, new buildings
+   * creep towards it until one can.
+   */
+  private shipyardSpot(): boolean {
+    const coast = this.coastal();
+    if (!coast) return false;
+    const type = structureFor(this.player.faction, 'naval');
+    if (!type) return false;
+    if (this.findSpot(type, coast.x, coast.z, 8, 0, false)) return true;
+    this.creep = true;
+    return false;
+  }
+
+  /** Warships gather, then sail for the enemy's coast and shell whatever they find. */
+  private manageFleet(): void {
+    const world = this.world;
+    const ships = this.own(world.units).filter((unit) => unit.def.naval);
+    if (ships.length === 0) return;
+    const value = ships.reduce((sum, unit) => sum + unit.def.cost, 0);
+    const enemy = world.players[this.enemy];
+    if (!enemy || value < (this.player.ai === 'hard' ? 3000 : 4000)) return;
+    const idle = ships.filter((unit) => unit.order.kind === 'idle');
+    if (idle.length < ships.length * 0.6) return;
+    const first = ships[0];
+    if (!first) return;
+    const map = world.map;
+    const region = map.regionOf(map.cellAt(first.x, first.z), 'naval');
+    const target = this.targetNear(enemy, first.x, first.z);
+    if (!target) return;
+    const cell = map.nearestOpen(target.x, target.z, region, 20, 'naval');
+    if (cell < 0) return;
+    orderMove(world, idle, map.cellX(cell) + 0.5, map.cellZ(cell) + 0.5, true);
+  }
+
+  /** Fires charged superweapons at the enemy's densest cluster of buildings. */
+  private useSuperweapons(): void {
+    const world = this.world;
+    const enemy = world.players[this.enemy];
+    for (const structure of this.own(world.structures)) {
+      if (!isReady(structure)) continue;
+      const kind = structure.def.superweapon;
+      if (kind === 'storm' || kind === 'missile') {
+        if (!enemy) continue;
+        const target = this.densest(enemy.index, SUPERWEAPONS[kind].radius);
+        if (target) fireSuperweapon(world, structure, target);
+      } else if (kind === 'shield') {
+        const fighting = this.own(world.units).filter(
+          (unit) => this.attackers.has(unit.id) && unit.target !== 0,
+        );
+        const lead = fighting[0];
+        if (lead && fighting.length >= 4)
+          fireSuperweapon(world, structure, { x: lead.x, z: lead.z });
+      } else if (kind === 'phase' && enemy) {
+        const hq = this.hq();
+        if (!hq) continue;
+        const rally = this.homePoint(hq.cx, hq.cz, enemy);
+        const group = world
+          .unitsNear(rally.x, rally.z, SUPERWEAPONS.phase.radius)
+          .filter(
+            (unit) =>
+              unit.owner === this.player.index &&
+              isCombat(unit) &&
+              !unit.def.flies &&
+              !unit.def.naval,
+          );
+        if (group.length < 6) continue;
+        const target = this.targetNear(enemy, rally.x, rally.z);
+        if (!target) continue;
+        const dx = rally.x - target.x;
+        const dz = rally.z - target.z;
+        const length = Math.hypot(dx, dz) || 1;
+        const landing = { x: target.x + (dx / length) * 5, z: target.z + (dz / length) * 5 };
+        if (fireSuperweapon(world, structure, rally, landing)) {
+          for (const unit of group) this.attackers.add(unit.id);
+          orderMove(world, group, target.x, target.z, true);
+        }
+      }
+    }
+  }
+
+  /** The spot with the most enemy building value within `radius`. */
+  private densest(owner: number, radius: number): { x: number; z: number } | null {
+    const structures = this.world.structures.filter(
+      (structure) => structure.owner === owner && structure.def.role !== 'wall',
+    );
+    let best: { x: number; z: number } | null = null;
+    let bestValue = 0;
+    for (const centre of structures) {
+      let value = 0;
+      for (const other of structures) {
+        if (Math.hypot(other.cx - centre.cx, other.cz - centre.cz) <= radius)
+          value += other.def.cost;
+      }
+      if (value > bestValue) {
+        bestValue = value;
+        best = { x: centre.cx, z: centre.cz };
+      }
+    }
+    return best;
+  }
+
   /** Where to put a new structure: refineries near ore, defences towards the enemy. */
   private anchorFor(type: StructureType, hq: Structure): { x: number; z: number } {
     const def = STRUCTURES[type];
     const world = this.world;
+    if (def.onWater) {
+      const coast = this.coastal();
+      if (coast) return coast;
+    }
+    if (this.creep && def.role !== 'defense' && def.role !== 'refinery') {
+      const coast = this.coastal();
+      if (coast) return { x: hq.cx + (coast.x - hq.cx) * 0.7, z: hq.cz + (coast.z - hq.cz) * 0.7 };
+    }
     if (def.role === 'refinery') {
       const ore = this.nearestOre(hq.cx, hq.cz);
       if (ore) return { x: hq.cx + (ore.x - hq.cx) * 0.7, z: hq.cz + (ore.z - hq.cz) * 0.7 };
@@ -679,7 +876,7 @@ export class AiBrain {
     const map = world.map;
     const def = STRUCTURES[type];
     const [w, h] = def.size;
-    const spacious = def.role !== 'defense' && def.role !== 'wall';
+    const spacious = def.role !== 'defense' && def.role !== 'wall' && !def.onWater;
     const candidates: [number, number, number][] = [];
     const ox = Math.round(x - w / 2);
     const oz = Math.round(z - h / 2);

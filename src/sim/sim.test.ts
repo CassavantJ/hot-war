@@ -1,9 +1,12 @@
 import { describe, expect, it } from 'vitest';
 
+import { MISSIONS } from './campaign';
+import { GROUND } from './map';
 import { buildMap, MAPS } from './maps';
+import { createMission } from './mission';
 import { orderAttack, orderDeploy, orderEnter, orderMove } from './orders';
 import { placeStructure, sell, spawnUnit, startBuild } from './production';
-import { STRUCTURES } from './rules';
+import { mobilityOf, STRUCTURES } from './rules';
 import { createGame } from './setup';
 import type { GameSettings, PlayerSetup, World } from './world';
 
@@ -240,4 +243,41 @@ describe('special abilities', () => {
     expect(plant.dead).toBe(true);
     expect(me.credits - before).toBe(400);
   });
+});
+
+describe('campaign', () => {
+  for (const def of MISSIONS) {
+    it(`${def.title} sets up cleanly and runs`, () => {
+      const world = createMission(def);
+      const map = world.map;
+      for (const structure of world.structures) {
+        for (let z = structure.z; z < structure.z + structure.h; z++) {
+          for (let x = structure.x; x < structure.x + structure.w; x++) {
+            expect(map.inside(x, z), `${structure.type} off the map`).toBe(true);
+            const index = map.index(x, z);
+            expect(map.structure[index], `${structure.type} overlaps at ${x},${z}`).toBe(
+              structure.id,
+            );
+            const ground = map.groundAt(index);
+            if (!structure.def.onWater) {
+              expect(
+                ground === GROUND.water || ground === GROUND.cliff,
+                `${structure.type} on water or cliff at ${x},${z}`,
+              ).toBe(false);
+            }
+          }
+        }
+      }
+      for (const unit of world.units) {
+        const cell = map.cellAt(unit.x, unit.z);
+        expect(
+          map.isBlocked(cell, mobilityOf(unit.def)),
+          `${unit.type} stuck at ${unit.x},${unit.z}`,
+        ).toBe(false);
+      }
+      run(world, 90);
+      expect(world.outcome).toBe('playing');
+      expect(world.mission?.status.length).toBe(def.objectives.length);
+    });
+  }
 });

@@ -56,7 +56,14 @@ export function isAirborne(entity: Entity): boolean {
 /** Can this weapon hurt this target at all? */
 export function canHit(weapon: WeaponDef, target: Entity): boolean {
   if (target.dead) return false;
-  if (target.entity === 'unit' && target.inside) return false;
+  if (target.entity === 'unit') {
+    if (target.inside) return false;
+    // Submerged submarines can only be hit by torpedoes and depth charges.
+    if (target.submerged) return weapon.underwater === true;
+    if (weapon.shipsOnly && !target.def.naval) return false;
+  } else if (weapon.shipsOnly) {
+    return false;
+  }
   if (isAirborne(target) ? weapon.air !== true : weapon.ground === false) return false;
   return VERSUS[weapon.warhead][armorOf(target)] > 0;
 }
@@ -226,22 +233,23 @@ function projectile(
   power: number,
 ): Projectile {
   const weapon = WEAPONS[id];
+  const low = weapon.projectile === 'torpedo';
   return {
     weapon: id,
     kind: weapon.projectile,
     owner: shooter.owner,
     attacker: shooter.id,
     x: from.x,
-    y: from.y,
+    y: low ? 0 : from.y,
     z: from.z,
     px: from.x,
-    py: from.y,
+    py: low ? 0 : from.y,
     pz: from.z,
     sx: from.x,
-    sy: from.y,
+    sy: low ? 0 : from.y,
     sz: from.z,
     tx: to.x,
-    ty: to.y,
+    ty: low ? 0 : to.y,
     tz: to.z,
     target,
     speed: weapon.speed ?? 12,
@@ -298,7 +306,7 @@ export function tickProjectiles(world: World): void {
       if (target) {
         const aim = aimPoint(target, shot.x, shot.z);
         shot.tx = aim.x;
-        shot.ty = aim.y;
+        shot.ty = shot.kind === 'torpedo' ? 0 : aim.y;
         shot.tz = aim.z;
       } else {
         shot.target = 0;
@@ -405,7 +413,7 @@ export function dealDamage(
   attacker: Shooter | null,
   owner: number,
 ): void {
-  if (target.dead) return;
+  if (target.dead || target.shieldUntil > world.time) return;
   let multiplier = VERSUS[warhead][armorOf(target)];
   if (target.entity === 'unit') {
     multiplier /= target.armorBonus * (RANK_ARMOR[target.rank] ?? 1);
@@ -476,6 +484,12 @@ export function killUnit(
     world.emit({ kind: 'explode', at: { x: unit.x, y: unit.alt, z: unit.z }, size });
   }
   releaseUnit(world, unit);
+  // Whoever was riding inside goes down with it.
+  for (const id of unit.passengers) {
+    const passenger = world.unit(id);
+    if (passenger) killUnit(world, passenger, killer, 'blast');
+  }
+  unit.passengers = [];
   const owner = world.players[unit.owner];
   if (owner) {
     owner.stats.unitsLost++;
@@ -515,6 +529,8 @@ export function releaseUnit(world: World, unit: Unit): void {
     inside.garrison = inside.garrison.filter((id) => id !== unit.id);
     if (inside.garrison.length === 0 && inside.def.role === 'civilian') inside.owner = -1;
   }
+  const carrier = world.unit(unit.inside);
+  if (carrier) carrier.passengers = carrier.passengers.filter((id) => id !== unit.id);
 }
 
 function gainXp(world: World, unit: Unit, value: number): void {

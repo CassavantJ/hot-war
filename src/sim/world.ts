@@ -17,6 +17,8 @@ import {
   type WeaponId,
 } from './rules';
 import { revealAround, updateShroud } from './shroud';
+import { tickMission, type MissionState } from './mission';
+import { tickSuperweapons, type Storm, type Strike } from './superweapons';
 import { tickStructure } from './structures';
 import { tickUnit } from './units';
 
@@ -48,6 +50,15 @@ export type GameEvent =
   | { kind: 'warp'; from: Vec3; to: Vec3 }
   | { kind: 'eva'; player: number; text: string; tone: Tone; at?: { x: number; z: number } }
   | { kind: 'crate'; player: number; x: number; z: number; text: string }
+  | { kind: 'storm'; x: number; z: number; radius: number; time: number }
+  | { kind: 'bolt'; x: number; z: number }
+  | {
+      kind: 'launch';
+      from: { x: number; z: number };
+      to: { x: number; z: number };
+      time: number;
+    }
+  | { kind: 'shield'; x: number; z: number; radius: number }
   | { kind: 'promoted'; id: number; rank: number }
   | {
       kind: 'sound';
@@ -75,6 +86,8 @@ export interface GameSettings {
   /** Win by destroying every structure (and base truck), rather than every unit too. */
   shortGame: boolean;
   crates: boolean;
+  /** Superweapons can be built (on unless turned off). */
+  superweapons?: boolean;
   players: PlayerSetup[];
 }
 
@@ -91,6 +104,10 @@ export class World {
   structures: Structure[] = [];
   projectiles: Projectile[] = [];
   crates: Crate[] = [];
+  storms: Storm[] = [];
+  strikes: Strike[] = [];
+  /** A campaign mission's script and objectives, if this is one. */
+  mission: MissionState | null = null;
   brains: AiBrain[] = [];
   time = 0;
   ticks = 0;
@@ -331,6 +348,7 @@ export class World {
     this.rebuildBuckets();
     resolveCollisions(this);
     tickProjectiles(this);
+    tickSuperweapons(this);
     tickOre(this);
     if (this.settings.crates) tickCrates(this);
     this.sweep();
@@ -338,7 +356,11 @@ export class World {
     if (this.slowTimer >= 0.25) {
       this.slowTimer = 0;
       updateShroud(this);
-      if (this.ticks % 20 === 0) this.checkVictory();
+      if (this.mission) {
+        if (this.ticks % 10 === 0) tickMission(this, this.mission);
+      } else if (this.ticks % 20 === 0) {
+        this.checkVictory();
+      }
     }
   }
 

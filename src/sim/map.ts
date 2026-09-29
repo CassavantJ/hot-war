@@ -13,6 +13,21 @@ export const GROUND = {
 
 export type Theme = 'temperate' | 'snow' | 'desert';
 
+/** How something gets about: on land, on water, or either. */
+export type Mobility = 'ground' | 'naval' | 'amphibious';
+
+/** Where one kind of mover can't go, and the connected areas where it can. */
+class Layer {
+  readonly blocked: Uint8Array;
+  readonly region: Int32Array;
+  dirty = true;
+
+  constructor(size: number) {
+    this.blocked = new Uint8Array(size);
+    this.region = new Int32Array(size);
+  }
+}
+
 export interface Cell {
   x: number;
   z: number;
@@ -37,17 +52,16 @@ export class GameMap {
   readonly structure: Int32Array;
   /** 1 where that structure is a pad units can drive over. */
   readonly pad: Uint8Array;
-  /** 1 where ground units can't go. */
+  /** Blocked cells and connected regions for each kind of mover. */
+  readonly layers: Record<Mobility, Layer>;
+  /** 1 where ground units can't go (the ground layer's). */
   readonly blocked: Uint8Array;
-  /** Connected areas of open ground, for quick "can I get there at all?" checks. */
-  readonly region: Int32Array;
   /** Cells with an ore drill, which slowly spills new ore around it. */
   readonly drills: number[] = [];
   starts: Cell[] = [];
   /** Bumped whenever ore or buildings change, so views know to redraw. */
   oreVersion = 0;
   blockVersion = 0;
-  private regionsDirty = true;
 
   constructor(width: number, height: number, theme: Theme) {
     this.width = width;
@@ -60,8 +74,8 @@ export class GameMap {
     this.gem = new Uint8Array(size);
     this.structure = new Int32Array(size);
     this.pad = new Uint8Array(size);
-    this.blocked = new Uint8Array(size);
-    this.region = new Int32Array(size);
+    this.layers = { ground: new Layer(size), naval: new Layer(size), amphibious: new Layer(size) };
+    this.blocked = this.layers.ground.blocked;
   }
 
   index(x: number, z: number): number {
@@ -91,12 +105,16 @@ export class GameMap {
     return this.ground[index] ?? GROUND.cliff;
   }
 
-  isBlocked(index: number): boolean {
-    return this.blocked[index] !== 0;
+  isBlocked(index: number, mobility: Mobility = 'ground'): boolean {
+    return this.layers[mobility].blocked[index] !== 0;
   }
 
-  passable(x: number, z: number): boolean {
-    return this.inside(x, z) && this.blocked[this.index(x, z)] === 0;
+  passable(x: number, z: number, mobility: Mobility = 'ground'): boolean {
+    return this.inside(x, z) && this.layers[mobility].blocked[this.index(x, z)] === 0;
+  }
+
+  isWater(index: number): boolean {
+    return this.groundAt(index) === GROUND.water;
   }
 
   /** Ground that could ever be walked on, ignoring buildings and trees. */
@@ -107,15 +125,22 @@ export class GameMap {
 
   /** Re-works out whether one cell can be crossed; call after changing it. */
   refresh(index: number): void {
-    const blocked =
-      !this.openGround(index) ||
+    const ground = this.groundAt(index);
+    const obstacle =
       (this.tree[index] ?? 0) > 0 ||
       this.drills.includes(index) ||
       ((this.structure[index] ?? 0) !== 0 && this.pad[index] === 0);
+    this.set('ground', index, !this.openGround(index) || obstacle);
+    this.set('naval', index, ground !== GROUND.water || obstacle);
+    this.set('amphibious', index, ground === GROUND.cliff || obstacle);
+  }
+
+  private set(mobility: Mobility, index: number, blocked: boolean): void {
+    const layer = this.layers[mobility];
     const value = blocked ? 1 : 0;
-    if (this.blocked[index] !== value) {
-      this.blocked[index] = value;
-      this.regionsDirty = true;
+    if (layer.blocked[index] !== value) {
+      layer.blocked[index] = value;
+      layer.dirty = true;
       this.blockVersion++;
     }
   }
@@ -159,21 +184,24 @@ export class GameMap {
     return value;
   }
 
-  regionOf(index: number): number {
-    if (this.regionsDirty) this.labelRegions();
-    return this.region[index] ?? 0;
+  regionOf(index: number, mobility: Mobility = 'ground'): number {
+    const layer = this.layers[mobility];
+    if (layer.dirty) this.labelRegions(layer);
+    return layer.region[index] ?? 0;
   }
 
-  /** Flood-fills open ground into numbered regions (0 = blocked). */
-  private labelRegions(): void {
-    this.regionsDirty = false;
-    this.region.fill(0);
+  /** Flood-fills open cells into numbered regions (0 = blocked). */
+  private labelRegions(layer: Layer): void {
+    layer.dirty = false;
+    const region = layer.region;
+    const blocked = layer.blocked;
+    region.fill(0);
     const stack: number[] = [];
     let next = 1;
-    for (let start = 0; start < this.region.length; start++) {
-      if (this.blocked[start] !== 0 || this.region[start] !== 0) continue;
+    for (let start = 0; start < region.length; start++) {
+      if (blocked[start] !== 0 || region[start] !== 0) continue;
       const label = next++;
-      this.region[start] = label;
+      region[start] = label;
       stack.push(start);
       while (stack.length > 0) {
         const index = stack.pop() ?? 0;
@@ -182,8 +210,8 @@ export class GameMap {
         const visit = (nx: number, nz: number) => {
           if (!this.inside(nx, nz)) return;
           const n = this.index(nx, nz);
-          if (this.blocked[n] !== 0 || this.region[n] !== 0) return;
-          this.region[n] = label;
+          if (blocked[n] !== 0 || region[n] !== 0) return;
+          region[n] = label;
           stack.push(n);
         };
         visit(x + 1, z);
@@ -198,7 +226,14 @@ export class GameMap {
    * The nearest open cell to (x, z) that can be reached from `region` (any region if 0),
    * searching outwards up to `radius` cells. Returns -1 if there's none.
    */
-  nearestOpen(x: number, z: number, region = 0, radius = 24): number {
+  nearestOpen(
+    x: number,
+    z: number,
+    region = 0,
+    radius = 24,
+    mobility: Mobility = 'ground',
+  ): number {
+    const blocked = this.layers[mobility].blocked;
     const cx = Math.floor(x);
     const cz = Math.floor(z);
     for (let r = 0; r <= radius; r++) {
@@ -211,8 +246,8 @@ export class GameMap {
           const nz = cz + dz;
           if (!this.inside(nx, nz)) continue;
           const n = this.index(nx, nz);
-          if (this.blocked[n] !== 0) continue;
-          if (region !== 0 && this.regionOf(n) !== region) continue;
+          if (blocked[n] !== 0) continue;
+          if (region !== 0 && this.regionOf(n, mobility) !== region) continue;
           const distance = (nx + 0.5 - x) ** 2 + (nz + 0.5 - z) ** 2;
           if (distance < bestDistance) {
             bestDistance = distance;
