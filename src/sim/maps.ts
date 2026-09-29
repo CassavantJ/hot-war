@@ -62,21 +62,23 @@ export const MAPS: MapSpec[] = [
         kind: 'river',
         points: [
           [61, -2],
-          [47, 17],
-          [37, 27],
-          [27, 37],
-          [17, 47],
+          [53, 9],
+          [45, 14],
+          [40, 23],
+          [32, 32],
+          [24, 41],
+          [19, 50],
+          [11, 55],
           [3, 66],
         ],
         width: 3.2,
         once: true,
       },
       { kind: 'ford', at: [32, 32], r: 3.2, once: true },
-      { kind: 'ford', at: [46, 18], r: 2.3 },
+      { kind: 'ford', at: [43, 18], r: 2.4 },
       { kind: 'ore', at: [22, 9], r: 4, drill: true },
       { kind: 'ore', at: [8, 24], r: 3.2 },
       { kind: 'ore', at: [26, 26], r: 2.6, gems: true },
-      { kind: 'ore', at: [38, 38], r: 2.6, gems: true, once: true },
       { kind: 'forest', at: [30, 6], r: 4.5, density: 0.55 },
       { kind: 'forest', at: [5, 36], r: 4, density: 0.5 },
       { kind: 'forest', at: [18, 30], r: 3, density: 0.45 },
@@ -309,7 +311,7 @@ export function buildMap(spec: MapSpec, seed = 1): BuiltMap {
     each(river, (copy) => {
       const points = river.points.map((point) => transform(spec, copy, point));
       forLine(points, river.width, (index, distance, x, z) => {
-        const wobble = 0.75 + 0.5 * fairNoise(spec, x, z, seed * 5 + 11, 3);
+        const wobble = 0.55 + 0.9 * fairNoise(spec, x, z, seed * 5 + 11, 5);
         if (distance <= (river.width / 2) * wobble + 0.5) map.ground[index] = GROUND.water;
       });
     });

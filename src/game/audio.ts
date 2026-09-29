@@ -1,4 +1,5 @@
 import type { SoundId } from '../sim/rules';
+import { Music } from './music';
 
 export type Effect =
   | SoundId
@@ -30,16 +31,60 @@ const GAP: Partial<Record<Effect, number>> = {
   bigcannon: 0.08,
 };
 
+const SETTINGS = 'hotwar.audio.v1';
+
+interface Settings {
+  volume: number;
+  music: number;
+  voice: boolean;
+}
+
+function loadSettings(): Settings {
+  const fallback = { volume: 0.55, music: 0.35, voice: true };
+  try {
+    const raw = window.localStorage.getItem(SETTINGS);
+    return raw ? { ...fallback, ...(JSON.parse(raw) as Partial<Settings>) } : fallback;
+  } catch {
+    return fallback;
+  }
+}
+
 /** Every sound is synthesised here; nothing is loaded from files. */
 export class Audio {
-  volume = 0.55;
-  voice = true;
+  volume: number;
+  musicVolume: number;
+  voice: boolean;
+  private music: Music | null = null;
   private context: AudioContext | null = null;
   private master: GainNode | null = null;
   private noise: AudioBuffer | null = null;
   private readonly last = new Map<Effect, number>();
   private speaking = false;
   private readonly spoken: string[] = [];
+
+  constructor() {
+    const settings = loadSettings();
+    this.volume = settings.volume;
+    this.musicVolume = settings.music;
+    this.voice = settings.voice;
+  }
+
+  private save(): void {
+    try {
+      window.localStorage.setItem(
+        SETTINGS,
+        JSON.stringify({ volume: this.volume, music: this.musicVolume, voice: this.voice }),
+      );
+    } catch {
+      // Not remembered in private browsing.
+    }
+  }
+
+  setMusicVolume(volume: number): void {
+    this.musicVolume = volume;
+    this.music?.setVolume(volume);
+    this.save();
+  }
 
   /** Browsers only allow sound after a click or key press. */
   unlock(): void {
@@ -57,6 +102,9 @@ export class Audio {
       const data = buffer.getChannelData(0);
       for (let i = 0; i < data.length; i++) data[i] = Math.random() * 2 - 1;
       this.noise = buffer;
+      this.music = new Music(context, context.destination, buffer, Math.floor(Math.random() * 3));
+      this.music.setVolume(this.musicVolume);
+      this.music.start();
     } catch {
       this.context = null;
     }
@@ -65,14 +113,18 @@ export class Audio {
   setVoice(on: boolean): void {
     this.voice = on;
     if (!on && 'speechSynthesis' in window) window.speechSynthesis.cancel();
+    this.save();
   }
 
   setVolume(volume: number): void {
     this.volume = volume;
     if (this.master) this.master.gain.value = volume;
+    this.save();
   }
 
   close(): void {
+    this.music?.stop();
+    this.music = null;
     void this.context?.close();
     this.context = null;
     if ('speechSynthesis' in window) window.speechSynthesis.cancel();

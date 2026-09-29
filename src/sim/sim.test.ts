@@ -1,8 +1,8 @@
 import { describe, expect, it } from 'vitest';
 
 import { buildMap, MAPS } from './maps';
-import { orderAttack, orderDeploy, orderMove } from './orders';
-import { placeStructure, startBuild } from './production';
+import { orderAttack, orderDeploy, orderEnter, orderMove } from './orders';
+import { placeStructure, sell, spawnUnit, startBuild } from './production';
 import { STRUCTURES } from './rules';
 import { createGame } from './setup';
 import type { GameSettings, PlayerSetup, World } from './world';
@@ -150,4 +150,94 @@ describe('skirmish', () => {
       log.join('\n'),
     ).toBe(true);
   }, 120_000);
+});
+
+describe('special abilities', () => {
+  const blank = () => {
+    const world = createGame(settings([human('accord'), computer('bloc')]));
+    world.brains = [];
+    for (const unit of world.units) unit.dead = true;
+    // Headquarters in the far corners, so nobody counts as beaten.
+    world.addStructure('a_hq', 0, 1, 58, true);
+    world.addStructure('b_hq', 1, 59, 1, true);
+    world.tick();
+    return world;
+  };
+
+  it('infantry garrison a town building, which shoots back until it is burned out', () => {
+    const world = blank();
+    const house = world.structures.find((structure) => structure.type === 'c_flats');
+    if (!house) throw new Error('no flats');
+    const squad = [0, 1, 2].map((i) =>
+      world.addUnit('rifleman', 0, house.cx - 2 + i * 0.4, house.z + house.h + 2),
+    );
+    orderEnter(squad, house);
+    run(world, 12);
+    expect(house.garrison).toHaveLength(3);
+    expect(house.owner).toBe(0);
+    const enemy = world.addUnit('draftee', 1, house.cx, house.z + house.h + 4);
+    run(world, 8);
+    expect(enemy.dead).toBe(true);
+    const torches = [0, 1, 2, 3].map((i) =>
+      world.addUnit('torch', 1, house.cx - 1 + i * 0.5, house.z + house.h + 2.5),
+    );
+    orderAttack(world, torches, house);
+    run(world, 20);
+    expect(house.garrison).toHaveLength(0);
+    expect(house.owner).toBe(-1);
+  });
+
+  it('engineers capture oil derricks, which then pay out', () => {
+    const world = blank();
+    const derrick = world.structures.find((structure) => structure.type === 'c_derrick');
+    if (!derrick) throw new Error('no derrick');
+    const engineer = world.addUnit('engineer', 0, derrick.cx, derrick.z + derrick.h + 3);
+    orderEnter([engineer], derrick);
+    run(world, 10);
+    expect(derrick.owner).toBe(0);
+    expect(engineer.dead).toBe(true);
+    const me = world.players[0];
+    const before = me?.credits ?? 0;
+    run(world, 10);
+    expect((me?.credits ?? 0) - before).toBeGreaterThanOrEqual(50);
+  });
+
+  it('jets take off, strike, and fly home to rearm', () => {
+    const world = blank();
+    const command = world.addStructure('a_aircommand', 0, 10, 10, true);
+    world.structuresChanged = true;
+    world.tick();
+    const me = world.players[0];
+    if (!me) throw new Error('no player');
+    const jet = spawnUnit(world, me, 'falcon');
+    if (!jet) throw new Error('no jet');
+    expect(jet.flight).toBe('landed');
+    const target = world.addUnit('bear', 1, 30, 30);
+    orderAttack(world, [jet], target);
+    run(world, 6);
+    expect(target.hp).toBeLessThan(target.maxHp);
+    expect(jet.ammo).toBe(0);
+    run(world, 16);
+    expect(jet.flight).toBe('landed');
+    expect(command.pads).toContain(jet.id);
+    run(world, 7);
+    expect(jet.ammo).toBe(2);
+  });
+
+  it('commandos blow up buildings, and selling refunds half', () => {
+    const world = blank();
+    const target = world.addStructure('b_barracks', 1, 30, 30, true);
+    const commando = world.addUnit('commando', 0, 28, 34);
+    orderEnter([commando], target);
+    run(world, 10);
+    expect(target.dead).toBe(true);
+    const me = world.players[0];
+    if (!me) throw new Error('no player');
+    const plant = world.addStructure('a_power', 0, 12, 12, true);
+    const before = me.credits;
+    sell(world, plant);
+    run(world, 2);
+    expect(plant.dead).toBe(true);
+    expect(me.credits - before).toBe(400);
+  });
 });

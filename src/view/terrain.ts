@@ -66,6 +66,7 @@ export class Terrain {
     this.group.add(this.buildGround(palette));
     this.group.add(this.buildWater(palette.water));
     this.group.add(this.buildOutside(palette.outside));
+    this.group.add(this.buildSkirt());
     this.buildRocks(palette[GROUND.cliff] ?? '#777');
     this.buildTrees();
     this.buildDrills();
@@ -99,8 +100,21 @@ export class Terrain {
     }
     const jitter = hash2(vx, vz, 71) - 0.5;
     if (cells > 0 && cliffs === cells) return CLIFF_HEIGHT + jitter * 0.5;
-    if (cells > 0 && water === cells) return -WATER_DEPTH + jitter * 0.1;
-    return 0;
+    if (water === 0) return 0;
+    // Grade the bed by how much water is around, so shorelines curve instead of zig-zag.
+    let wet = 0;
+    let total = 0;
+    for (let dz = -2; dz <= 1; dz++) {
+      for (let dx = -2; dx <= 1; dx++) {
+        if (!map.inside(vx + dx, vz + dz)) continue;
+        total++;
+        if (map.groundAt(map.index(vx + dx, vz + dz)) === GROUND.water) wet++;
+      }
+    }
+    const depth = -WATER_DEPTH * (wet / Math.max(1, total)) ** 1.2 + jitter * 0.04;
+    // Land keeps its edge above the waterline; open water stays below it.
+    if (water < cells) return Math.max(-0.07, depth);
+    return Math.min(-0.16, depth);
   }
 
   private colorAt(
@@ -147,9 +161,12 @@ export class Terrain {
       for (let x = 0; x <= w; x++) {
         const i = z * (w + 1) + x;
         const height = this.heightAt(x, z);
-        positions[i * 3] = x;
+        // Nudge inner vertices about so coasts and cliff edges wander naturally.
+        const edge = x === 0 || z === 0 || x === w || z === h;
+        const nudge = edge ? 0 : 0.34;
+        positions[i * 3] = x + (hash2(x, z, 41) - 0.5) * nudge;
         positions[i * 3 + 1] = height;
-        positions[i * 3 + 2] = z;
+        positions[i * 3 + 2] = z + (hash2(x, z, 43) - 0.5) * nudge;
         this.colorAt(x, z, palette, color);
         if (height > 0.3) color.multiplyScalar(0.85 + hash2(x, z, 9) * 0.2);
         colors[i * 3] = color.r;
@@ -179,7 +196,7 @@ export class Terrain {
 
   private buildWater(hex: string): THREE.Mesh {
     const map = this.map;
-    const geometry = new THREE.PlaneGeometry(map.width, map.height);
+    const geometry = new THREE.PlaneGeometry(map.width - 0.04, map.height - 0.04);
     geometry.rotateX(-Math.PI / 2);
     const material = new THREE.MeshPhongMaterial({
       color: hex,
@@ -202,6 +219,30 @@ export class Terrain {
     const mesh = new THREE.Mesh(geometry, new THREE.MeshBasicMaterial({ color: hex }));
     mesh.position.set(map.width / 2, -0.6, map.height / 2);
     return mesh;
+  }
+
+  /** Earth walls round the map's edge, so it reads as a solid slab of land. */
+  private buildSkirt(): THREE.Mesh {
+    const map = this.map;
+    const w = map.width;
+    const h = map.height;
+    const depth = 0.6;
+    const positions: number[] = [];
+    const wall = (x0: number, z0: number, x1: number, z1: number) => {
+      positions.push(x0, 0.01, z0, x1, 0.01, z1, x1, -depth, z1);
+      positions.push(x0, 0.01, z0, x1, -depth, z1, x0, -depth, z0);
+    };
+    wall(0, h, w, h);
+    wall(w, h, w, 0);
+    wall(w, 0, 0, 0);
+    wall(0, 0, 0, h);
+    const geometry = new THREE.BufferGeometry();
+    geometry.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
+    geometry.computeVertexNormals();
+    return new THREE.Mesh(
+      geometry,
+      new THREE.MeshLambertMaterial({ color: '#4a3b2c', side: THREE.DoubleSide }),
+    );
   }
 
   private buildRocks(hex: string): void {

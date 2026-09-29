@@ -81,6 +81,8 @@ export class Unit {
   reload = 0;
   // Book-keeping.
   scanTimer = 0;
+  /** Seconds spent with nothing to do. */
+  idleTime = 0;
   repathTimer = 0;
   stuckTimer = 0;
   stuckCount = 0;

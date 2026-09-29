@@ -689,3 +689,36 @@
     grid-template-columns: 1fr;
   }
 }
+
+/* Short screens: a smaller radar, no info panel, and a sidebar that scrolls if it must. */
+.sidebar {
+  overflow-y: auto;
+  scrollbar-width: thin;
+}
+
+.build {
+  min-height: 9rem;
+}
+
+@media (height < 44rem) {
+  .info {
+    display: none;
+  }
+}
+
+@media (height < 36rem) {
+  .radar {
+    width: 62%;
+    align-self: center;
+  }
+}
+
+@media (height < 26rem) {
+  .radar {
+    width: 45%;
+  }
+
+  .sideTop {
+    padding-top: 0.15rem;
+  }
+}

@@ -26,6 +26,7 @@ export function MatchScreen({ settings, speed, onRestart, onQuit }: Props) {
   const [help, setHelp] = useState(false);
   const [gameSpeed, setGameSpeed] = useState(speed);
   const [volume, setVolume] = useState(audio.volume);
+  const [music, setMusic] = useState(audio.musicVolume);
   const [voice, setVoice] = useState(audio.voice);
   useSyncExternalStore(match.subscribe, match.getVersion);
 
@@ -59,8 +60,9 @@ export function MatchScreen({ settings, speed, onRestart, onQuit }: Props) {
 
   useEffect(() => {
     audio.setVolume(volume);
+    audio.setMusicVolume(music);
     audio.setVoice(voice);
-  }, [audio, volume, voice]);
+  }, [audio, volume, music, voice]);
 
   const outcome = match.world.outcome;
   useEffect(() => {
@@ -142,7 +144,7 @@ export function MatchScreen({ settings, speed, onRestart, onQuit }: Props) {
                 </select>
               </label>
               <label>
-                <span>Volume</span>
+                <span>Sound effects</span>
                 <input
                   type="range"
                   min={0}
@@ -151,6 +153,19 @@ export function MatchScreen({ settings, speed, onRestart, onQuit }: Props) {
                   value={volume}
                   onChange={(event) => {
                     setVolume(Number(event.target.value));
+                  }}
+                />
+              </label>
+              <label>
+                <span>Music</span>
+                <input
+                  type="range"
+                  min={0}
+                  max={1}
+                  step={0.05}
+                  value={music}
+                  onChange={(event) => {
+                    setMusic(Number(event.target.value));
                   }}
                 />
               </label>

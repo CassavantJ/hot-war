@@ -907,12 +907,3 @@ export function crateGeometry(): THREE.BufferGeometry {
     .box(0.05, 0.31, 0.42, 0, 0.15, 0, '#6f5532')
     .build();
 }
-
-export function rubbleGeometry(): THREE.BufferGeometry {
-  return new Shape()
-    .box(0.9, 0.02, 0.9, 0, 0.01, 0, '#3b3a36')
-    .box(0.3, 0.14, 0.2, -0.2, 0.07, 0.1, '#5a5852', { ry: 0.4 })
-    .box(0.2, 0.1, 0.25, 0.25, 0.05, -0.2, '#4d4b46', { ry: 1.1 })
-    .box(0.15, 0.08, 0.12, 0.1, 0.04, 0.3, '#6a6760', { ry: 0.2 })
-    .build();
-}

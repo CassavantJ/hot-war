@@ -45,10 +45,20 @@ export function tickUnit(world: World, unit: Unit): void {
   }
   if (unit.def.flies) fly(unit, unit.def.altitude ?? 2);
   const order = unit.order;
+  if (order.kind !== 'idle') unit.idleTime = 0;
   switch (order.kind) {
     case 'idle':
       advance(world, unit);
       if (!autoEngage(world, unit, 0)) relaxTurret(unit);
+      // Harvesters left standing about go back to work after a moment.
+      if (unit.def.harvester) {
+        unit.idleTime += DT;
+        if (unit.idleTime > 4) {
+          unit.order = { kind: 'harvest' };
+          unit.step = unit.load >= unit.def.harvester.capacity ? 'toRefinery' : 'seek';
+          unit.lastOre = -1;
+        }
+      }
       break;
     case 'move':
       tickMove(world, unit, order.x, order.z, order.attack);

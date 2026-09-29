@@ -1,7 +1,6 @@
 import * as THREE from 'three';
 
 import { Batch } from './batches';
-import { rubbleGeometry } from './models';
 
 const VERTEX = /* glsl */ `
 attribute float size;
@@ -253,6 +252,8 @@ export class Streaks {
 }
 
 const xAxis = new THREE.Vector3(1, 0, 0);
+const SCORCHES = 400;
+const CHUNKS = 1500;
 
 /** Scorch marks and rubble left on the ground. */
 export class Decals {
@@ -275,45 +276,62 @@ export class Decals {
         polygonOffset: true,
         polygonOffsetFactor: -2,
       }),
-      400,
+      SCORCHES,
     );
     this.scorch.count = 0;
     this.scorch.frustumCulled = false;
     this.scorch.renderOrder = 1;
     scene.add(this.scorch);
     this.rubble = new THREE.InstancedMesh(
-      rubbleGeometry(),
-      new THREE.MeshLambertMaterial({ vertexColors: true }),
-      600,
+      new THREE.BoxGeometry(1, 1, 1),
+      new THREE.MeshLambertMaterial({ color: '#5b5751' }),
+      CHUNKS,
     );
     this.rubble.count = 0;
     this.rubble.frustumCulled = false;
+    this.rubble.castShadow = true;
     this.rubble.receiveShadow = true;
     scene.add(this.rubble);
   }
 
   addScorch(x: number, z: number, size: number): void {
-    const slot = this.scorchCount % 400;
+    const slot = this.scorchCount % SCORCHES;
     this.matrix.makeRotationY(Math.random() * 6).setPosition(x, 0.015, z);
     this.matrix.scale(new THREE.Vector3(size, 1, size));
     this.scorch.setMatrixAt(slot, this.matrix);
     this.scorchCount++;
-    this.scorch.count = Math.min(400, this.scorchCount);
+    this.scorch.count = Math.min(SCORCHES, this.scorchCount);
     this.scorch.instanceMatrix.needsUpdate = true;
   }
 
+  /** A burnt patch where a building stood, strewn with broken concrete. */
   addRubble(x: number, z: number, w: number, h: number): void {
-    for (let dz = 0; dz < h; dz++) {
-      for (let dx = 0; dx < w; dx++) {
-        const slot = this.rubbleCount % 600;
-        this.matrix
-          .makeRotationY(Math.floor(Math.random() * 4) * (Math.PI / 2))
-          .setPosition(x + dx + 0.5, 0, z + dz + 0.5);
-        this.rubble.setMatrixAt(slot, this.matrix);
-        this.rubbleCount++;
-      }
+    const slot = this.scorchCount % SCORCHES;
+    this.matrix.makeRotationY(Math.random() * 0.4 - 0.2).setPosition(x + w / 2, 0.012, z + h / 2);
+    this.matrix.scale(new THREE.Vector3(w * 1.25, 1, h * 1.25));
+    this.scorch.setMatrixAt(slot, this.matrix);
+    this.scorchCount++;
+    this.scorch.count = Math.min(SCORCHES, this.scorchCount);
+    this.scorch.instanceMatrix.needsUpdate = true;
+    const quaternion = new THREE.Quaternion();
+    const euler = new THREE.Euler();
+    for (let i = 0; i < w * h * 4; i++) {
+      const size = 0.08 + Math.random() * 0.22;
+      euler.set(Math.random() * 0.8, Math.random() * Math.PI, Math.random() * 0.8);
+      quaternion.setFromEuler(euler);
+      this.matrix.compose(
+        new THREE.Vector3(
+          x + 0.15 + Math.random() * (w - 0.3),
+          size * 0.3,
+          z + 0.15 + Math.random() * (h - 0.3),
+        ),
+        quaternion,
+        new THREE.Vector3(size * (1 + Math.random()), size * 0.7, size),
+      );
+      this.rubble.setMatrixAt(this.rubbleCount % CHUNKS, this.matrix);
+      this.rubbleCount++;
     }
-    this.rubble.count = Math.min(600, this.rubbleCount);
+    this.rubble.count = Math.min(CHUNKS, this.rubbleCount);
     this.rubble.instanceMatrix.needsUpdate = true;
   }
 }
