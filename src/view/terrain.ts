@@ -6,7 +6,7 @@ import { MAX_ORE } from '../sim/rules';
 import { Batch } from './batches';
 import { drillGeometry, oreGeometry, treeGeometries } from './models';
 import { Shape, teamMaterial } from './shapes';
-import { detailTexture, groundTexture } from './textures';
+import { detailTexture, groundTexture, waterNormalTexture } from './textures';
 
 type Palette = Record<number, string>;
 
@@ -60,6 +60,8 @@ export class Terrain {
   private readonly oreBatches: [Batch, Batch];
   private oreVersion = -1;
   private readonly oreMatrix = new THREE.Matrix4();
+  /** The water's ripples, drifting. */
+  private readonly ripples = waterNormalTexture();
 
   constructor(map: GameMap) {
     this.map = map;
@@ -194,12 +196,15 @@ export class Terrain {
     const map = this.map;
     const geometry = new THREE.PlaneGeometry(map.width - 0.04, map.height - 0.04);
     geometry.rotateX(-Math.PI / 2);
+    this.ripples.repeat.set(map.width / 3.5, map.height / 3.5);
     const material = new THREE.MeshStandardMaterial({
-      color: hex,
+      color: new THREE.Color(hex).multiplyScalar(0.8),
       transparent: true,
-      opacity: 0.84,
-      roughness: 0.12,
-      metalness: 0.2,
+      opacity: 0.86,
+      roughness: 0.18,
+      metalness: 0.3,
+      normalMap: this.ripples,
+      normalScale: new THREE.Vector2(0.95, 0.95),
     });
     const mesh = new THREE.Mesh(geometry, material);
     mesh.position.set(map.width / 2, WATER_LEVEL, map.height / 2);
@@ -321,6 +326,8 @@ export class Terrain {
 
   /** Redraws the ore when it has changed. */
   update(): void {
+    const drift = performance.now() / 1000;
+    this.ripples.offset.set(drift * 0.012, drift * 0.02);
     const map = this.map;
     if (map.oreVersion === this.oreVersion) return;
     this.oreVersion = map.oreVersion;

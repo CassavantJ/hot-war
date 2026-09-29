@@ -330,6 +330,48 @@ export function cameoGroundTexture(faction: 'accord' | 'bloc'): THREE.CanvasText
   return texture;
 }
 
+/** Wave ripples as a tiling normal map, from a few crossing swells plus chop. */
+export function waterNormalTexture(): THREE.CanvasTexture {
+  const size = 128;
+  const canvas = document.createElement('canvas');
+  canvas.width = size;
+  canvas.height = size;
+  const ctx = canvas.getContext('2d');
+  const texture = new THREE.CanvasTexture(canvas);
+  if (!ctx) return texture;
+  const tau = Math.PI * 2;
+  // Whole numbers of waves across the tile, so it repeats without a seam.
+  const height = (x: number, y: number) => {
+    const u = (x / size) * tau;
+    const v = (y / size) * tau;
+    return (
+      Math.sin(u * 3 + v * 2) * 0.5 +
+      Math.sin(u * -2 + v * 5 + 1.3) * 0.35 +
+      Math.sin(u * 7 + v * 3 + 2.1) * 0.18 +
+      Math.sin(u * 5 - v * 9 + 0.4) * 0.1 +
+      (noise(((x / size) * 16) % 16, ((y / size) * 16) % 16, 71) - 0.5) * 0.25
+    );
+  };
+  const image = ctx.createImageData(size, size);
+  for (let y = 0; y < size; y++) {
+    for (let x = 0; x < size; x++) {
+      const dx = height((x + 1) % size, y) - height((x + size - 1) % size, y);
+      const dy = height(x, (y + 1) % size) - height(x, (y + size - 1) % size);
+      const length = Math.hypot(dx, dy, 1);
+      const i = (y * size + x) * 4;
+      image.data[i] = Math.round((-dx / length) * 127 + 128);
+      image.data[i + 1] = Math.round((-dy / length) * 127 + 128);
+      image.data[i + 2] = Math.round((1 / length) * 127 + 128);
+      image.data[i + 3] = 255;
+    }
+  }
+  ctx.putImageData(image, 0, 0);
+  texture.wrapS = THREE.RepeatWrapping;
+  texture.wrapT = THREE.RepeatWrapping;
+  texture.colorSpace = THREE.NoColorSpace;
+  return texture;
+}
+
 /** A fine tiling grain (blades, pebbles), centred on mid-grey so it can multiply. */
 export function detailTexture(): THREE.CanvasTexture {
   const size = 256;
