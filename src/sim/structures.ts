@@ -21,6 +21,7 @@ import { spawnHarvester } from './economy';
 import { BASIC_INFANTRY, WEAPONS } from './rules';
 import { chargeSuperweapon } from './superweapons';
 import type { World } from './world';
+import { dhypot } from './dmath';
 
 /** Seconds a new structure takes to rise out of the ground. */
 const BUILD_UP = 1.4;
@@ -202,7 +203,7 @@ function fireBeamTower(world: World, tower: Structure, target: Entity): void {
     if (other === tower || other.type !== tower.type || other.owner !== tower.owner) continue;
     if (!other.working || other.target !== 0 || !readyToFire(other, 0) || player?.lowPower)
       continue;
-    if (Math.hypot(other.cx - tower.cx, other.cz - tower.cz) > 7.5) continue;
+    if (dhypot(other.cx - tower.cx, other.cz - tower.cz) > 7.5) continue;
     other.cooldowns[0] = WEAPONS.beamTower.cooldown;
     other.sinceFired = 0;
     world.emit({

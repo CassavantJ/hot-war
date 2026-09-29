@@ -404,3 +404,81 @@
   margin: 0;
   color: #ff8a7a;
 }
+
+/* Multiplayer ------------------------------------------------------------------------------- */
+
+.onlineActions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: 0.8rem;
+}
+
+.join {
+  display: flex;
+  align-items: flex-end;
+  gap: 0.5rem;
+}
+
+.option input[type='text'] {
+  width: 100%;
+  padding: 0.45rem 0.5rem;
+  border: 1px solid #34404d;
+  border-radius: 0.3rem;
+  background: #0f1419;
+  color: #e6ebf0;
+  font: inherit;
+  font-size: 0.95rem;
+}
+
+.join input[type='text'] {
+  width: 7.5rem;
+  font-family: ui-monospace, 'Cascadia Mono', Consolas, monospace;
+  letter-spacing: 0.25em;
+  text-transform: uppercase;
+}
+
+.roomCode {
+  display: flex;
+  align-items: center;
+  gap: 0.9rem;
+}
+
+.roomCode strong {
+  font-family: ui-monospace, 'Cascadia Mono', Consolas, monospace;
+  font-size: 2.3rem;
+  letter-spacing: 0.3em;
+  color: #ffd35a;
+  text-shadow: 0 0 0.8rem rgb(255 190 60 / 0.35);
+}
+
+.roomCode .small {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+}
+
+.onlineSeat {
+  grid-template-columns: 0.9rem minmax(0, 1.3fr) repeat(2, minmax(0, 1fr));
+}
+
+.onlineSeat .you {
+  overflow-wrap: anywhere;
+}
+
+.memberFaction {
+  grid-column: span 2;
+  font-size: 0.85rem;
+  color: #9aa6b2;
+}
+
+fieldset.options {
+  margin: 0;
+  padding: 0;
+  border: 0;
+  min-width: 0;
+}
+
+fieldset.options:disabled {
+  opacity: 0.75;
+}

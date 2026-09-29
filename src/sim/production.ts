@@ -18,6 +18,7 @@ import {
   type UnitType,
 } from './rules';
 import type { World } from './world';
+import { dpowInt } from './dmath';
 
 export function isUnitType(type: string): type is UnitType {
   return type in UNITS;
@@ -128,7 +129,7 @@ export function buildTime(_world: World, player: Player, type: UnitType | Struct
   let producers = 1;
   if (isUnitType(type)) producers = player.count(PRODUCER_ROLE[UNITS[type].from]);
   else producers = player.count('hq');
-  const speedup = Math.min(2.5, 1 / 0.8 ** Math.max(0, producers - 1));
+  const speedup = Math.min(2.5, 1 / dpowInt(0.8, Math.max(0, producers - 1)));
   const rate = BUILD_RATE * speedup * player.powerFactor;
   return Math.max(1, costOf(type) / rate) / player.buildRate;
 }

@@ -1,27 +1,8 @@
+import { applyCommand, type Command } from '../sim/commands';
 import type { Entity, Structure, Unit } from '../sim/entities';
-import {
-  orderAttack,
-  orderAttackGround,
-  orderDeploy,
-  orderEnter,
-  orderEvacuate,
-  orderGuard,
-  orderHarvest,
-  orderMove,
-  orderScatter,
-  orderStop,
-} from '../sim/orders';
-import {
-  placementCheck,
-  placeStructure,
-  placeWalls,
-  sell,
-  setPrimary,
-  toggleRepair,
-  type PlacementCheck,
-} from '../sim/production';
+import { placementCheck, type PlacementCheck } from '../sim/production';
 import { mobilityOf, STRUCTURES, SUPERWEAPONS, WEAPONS, type StructureType } from '../sim/rules';
-import { fireSuperweapon, isReady } from '../sim/superweapons';
+import { isReady } from '../sim/superweapons';
 import { seatCost, seatsFree } from '../sim/units';
 import type { World } from '../sim/world';
 import type { GameView } from '../view/GameView';
@@ -86,6 +67,12 @@ export class Controller {
   onCue: (cue: Cue) => void = () => undefined;
   onMenu: () => void = () => undefined;
   onTab: (tab: number | 'next') => void = () => undefined;
+  /**
+   * Sends a command on its way. In single player it's carried out at once and the answer is
+   * whether it worked; in multiplayer it goes out to everyone and the answer is null.
+   */
+  issue: (command: Command) => boolean | null = (command) =>
+    applyCommand(this.world, this.local, command);
   private pointer = { x: 0, y: 0, inside: false };
   private leftDown: { x: number; y: number; wall: { x: number; z: number } | null } | null = null;
   private rightDown: { x: number; y: number; moved: boolean } | null = null;
@@ -251,25 +238,25 @@ export class Controller {
         else this.onMenu();
         return true;
       case 's':
-        orderStop(this.selectedUnits());
+        this.issue({ kind: 'stop', units: ids(this.selectedUnits()) });
         this.onCue('move');
         return true;
       case 'g':
-        orderGuard(this.selectedUnits());
+        this.issue({ kind: 'guard', units: ids(this.selectedUnits()) });
         this.onCue('move');
         return true;
       case 'd': {
         const structure = this.structure();
         if (structure && this.mine(structure) && structure.garrison.length > 0) {
-          orderEvacuate(this.world, structure);
+          this.issue({ kind: 'evacuate', structure: structure.id });
           return true;
         }
-        orderDeploy(this.selectedUnits());
+        this.issue({ kind: 'deploy', units: ids(this.selectedUnits()) });
         this.onCue('move');
         return true;
       }
       case 'x':
-        orderScatter(this.world, this.selectedUnits());
+        this.issue({ kind: 'scatter', units: ids(this.selectedUnits()) });
         this.onCue('move');
         return true;
       case 'a':
@@ -507,7 +494,11 @@ export class Controller {
       this.updatePlacement(x, y);
       const check = this.placement;
       const cell = check?.cells[0];
-      if (check?.ok && cell && placeStructure(world, player, this.mode.type, cell.x, cell.z)) {
+      if (
+        check?.ok &&
+        cell &&
+        this.issue({ kind: 'place', type: this.mode.type, x: cell.x, z: cell.z }) !== false
+      ) {
         this.setMode({ kind: 'normal' });
       } else {
         this.onCue('error');
@@ -526,10 +517,10 @@ export class Controller {
     const units = this.selectedUnits();
     switch (action) {
       case 'sell':
-        if (structure) sell(world, structure);
+        if (structure) this.issue({ kind: 'sell', structure: structure.id });
         return;
       case 'repair':
-        if (structure) toggleRepair(world, structure);
+        if (structure) this.issue({ kind: 'repair', structure: structure.id });
         return;
       case 'select':
         if (target) this.select(target, mods.shift);
@@ -537,18 +528,23 @@ export class Controller {
       case 'rally': {
         const producerStructure = this.structure();
         if (producerStructure) {
-          producerStructure.rally = { x: ground.x, z: ground.z };
+          this.issue({
+            kind: 'rally',
+            structure: producerStructure.id,
+            x: ground.x,
+            z: ground.z,
+          });
           this.onCue('click');
         }
         return;
       }
       case 'deploy':
-        orderDeploy(units);
+        this.issue({ kind: 'deploy', units: ids(units) });
         this.onCue('move');
         return;
       case 'attack':
         if (target) {
-          orderAttack(world, units, target, mods.ctrl);
+          this.issue({ kind: 'attack', units: ids(units), target: target.id, force: mods.ctrl });
           this.markers.push({
             x: target.entity === 'unit' ? target.x : target.cx,
             z: target.entity === 'unit' ? target.z : target.cz,
@@ -556,7 +552,7 @@ export class Controller {
             age: 0,
           });
         } else {
-          orderAttackGround(units, ground.x, ground.z);
+          this.issue({ kind: 'attackGround', units: ids(units), x: ground.x, z: ground.z });
           this.markers.push({ x: ground.x, z: ground.z, kind: 'attack', age: 0 });
         }
         this.onCue('attack');
@@ -572,7 +568,7 @@ export class Controller {
             used += cost;
             return true;
           });
-          orderEnter(riders, unit);
+          this.issue({ kind: 'enter', units: ids(riders), target: unit.id });
           this.markers.push({ x: unit.x, z: unit.z, kind: 'move', age: 0 });
           this.onCue('move');
           return;
@@ -581,9 +577,18 @@ export class Controller {
           const movers = units.filter((candidate) =>
             enterable(candidate, structure, this.local, world),
           );
-          if (movers.length > 0) orderEnter(movers, structure);
+          if (movers.length > 0) {
+            this.issue({ kind: 'enter', units: ids(movers), target: structure.id });
+          }
           const rest = units.filter((candidate) => !movers.includes(candidate));
-          if (rest.length > 0) orderMove(world, rest, structure.cx, structure.z + structure.h + 1);
+          if (rest.length > 0) {
+            this.issue({
+              kind: 'move',
+              units: ids(rest),
+              x: structure.cx,
+              z: structure.z + structure.h + 1,
+            });
+          }
           this.markers.push({ x: structure.cx, z: structure.cz, kind: 'move', age: 0 });
           this.onCue('move');
         }
@@ -591,16 +596,24 @@ export class Controller {
       case 'harvest': {
         const cell = world.map.cellAt(ground.x, ground.z);
         const harvesters = units.filter((candidate) => candidate.def.harvester);
-        orderHarvest(harvesters, cell);
+        this.issue({ kind: 'harvest', units: ids(harvesters), cell });
         const others = units.filter((candidate) => !candidate.def.harvester);
-        if (others.length > 0) orderMove(world, others, ground.x, ground.z);
+        if (others.length > 0) {
+          this.issue({ kind: 'move', units: ids(others), x: ground.x, z: ground.z });
+        }
         this.markers.push({ x: ground.x, z: ground.z, kind: 'move', age: 0 });
         this.onCue('move');
         return;
       }
       case 'move': {
         const attackMove = this.mode.kind === 'attackMove';
-        orderMove(world, units, ground.x, ground.z, attackMove);
+        this.issue({
+          kind: 'move',
+          units: ids(units),
+          x: ground.x,
+          z: ground.z,
+          attack: attackMove,
+        });
         this.markers.push({
           x: ground.x,
           z: ground.z,
@@ -653,9 +666,12 @@ export class Controller {
       this.onCue('click');
       return;
     }
-    const fired = from
-      ? fireSuperweapon(this.world, structure, from, spot)
-      : fireSuperweapon(this.world, structure, spot);
+    const fired =
+      this.issue(
+        from
+          ? { kind: 'superweapon', structure: id, x: from.x, z: from.z, to: spot }
+          : { kind: 'superweapon', structure: id, x: spot.x, z: spot.z },
+      ) !== false;
     this.onCue(fired ? 'attack' : 'error');
     if (fired) this.setMode({ kind: 'normal' });
   }
@@ -666,7 +682,7 @@ export class Controller {
     this.lastClick = { time: now, id: target.id };
     if (target.entity === 'structure') {
       if (this.selectedStructure === target.id && this.mine(target) && producer(target)) {
-        setPrimary(this.world, target);
+        this.issue({ kind: 'primary', structure: target.id });
       }
       this.selection.clear();
       this.selectedStructure = target.id;
@@ -773,11 +789,15 @@ export class Controller {
     if (this.mode.kind !== 'place') return;
     const player = this.world.players[this.local];
     if (!player) return;
-    const placed = placeWalls(this.world, player, this.mode.type, this.wallLine);
-    if (placed > 0) this.setMode({ kind: 'normal' });
+    const placed = this.issue({ kind: 'walls', type: this.mode.type, cells: this.wallLine });
+    if (placed !== false) this.setMode({ kind: 'normal' });
     else this.onCue('error');
     this.wallLine = [];
   }
+}
+
+function ids(units: Unit[]): number[] {
+  return units.map((unit) => unit.id);
 }
 
 function producer(structure: Structure): boolean {

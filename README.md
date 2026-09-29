@@ -22,10 +22,19 @@ and music) is made for this game, in code.
   Bulwark Field. They take minutes to charge, and everyone is warned when one is ready.
 - **Two short campaigns**, three missions each, with briefings, scripted attacks, objectives
   and reinforcements.
+- **Multiplayer** for two to four people over the internet: one hosts a room and shares its
+  five-letter code, the others join with it.
+- **Save games**: three slots, from the pause menu.
+- **Voiced units** that answer when selected and ordered about (the browser's own speech
+  voices), and a look in the style of the late-90s pre-rendered classics: painted terrain,
+  bevelled and reflective metal, craters, and a chrome sidebar.
 
 ## How it's built
 
-- **Simulation** (`src/sim/`): plain TypeScript on a fixed 20 Hz clock, with tests. The map
+- **Simulation** (`src/sim/`): plain TypeScript on a fixed 20 Hz clock, with tests. It's
+  deterministic to the bit (`dmath.ts` stands in for the `Math` functions browsers may round
+  differently), every player action is a plain-data command (`commands.ts`), and a whole
+  battle can be saved and restored (`snapshot.ts`). The map
   grid and its generator (`map.ts`, `maps.ts`), A\* pathfinding (`path.ts`), units and their
   orders (`units.ts`, `movement.ts`), weapons, armour and projectiles (`combat.ts`, `rules.ts`),
   building, power and placement (`production.ts`, `structures.ts`), ore and harvesting
@@ -36,7 +45,11 @@ and music) is made for this game, in code.
   solids (`models.ts`) and drawn instanced, with a team-colour shader; terrain, water, the
   shroud, particles, beams, decals, the radar and the selection overlay.
 - **Game** (`src/game/`): the match loop, mouse and keyboard controls, synthesised sound
-  effects, a procedural soundtrack, and the announcer (the browser's own speech voice).
+  effects, a procedural soundtrack, the announcer and unit voices (the browser's own speech
+  voices), save slots, and multiplayer: lockstep (`lockstep.ts`), where every screen runs the
+  same simulation and only orders cross the network, and the relay connection (`net.ts`).
+- **Relay** (`relay/`): a Cloudflare Worker with a Durable Object per room. It keeps the lobby
+  and passes orders between players; it never runs the game.
 - **Interface** (`src/components/`): the skirmish setup screen, the sidebar (radar, credits,
   power, build tabs) and the menus.
 
@@ -62,4 +75,23 @@ Hosted as its own Cloudflare Pages project at `https://hot-war.raylmao.com`. The
 `ADDING_AN_APP.md`.
 
 `public/_headers` lets the hub embed this app (`frame-ancestors`). If the app calls an API or
-loads anything from another origin, add that origin to the Content-Security-Policy there.
+loads anything from another origin, add that origin to the Content-Security-Policy there (the
+multiplayer relay, `wss://hot-war-relay.raylmao.com`, is already in `connect-src`).
+
+### Multiplayer relay
+
+The relay is deployed separately, once, from `relay/`:
+
+```bash
+cd relay
+pnpm install
+npx wrangler login
+npx wrangler deploy
+```
+
+That creates the `hot-war-relay` Worker, its `Room` Durable Object and the custom domain
+`hot-war-relay.raylmao.com` (the `raylmao.com` zone has to be on the same Cloudflare account).
+Redeploy only when `relay/src/` changes.
+
+For local testing, `pnpm dev` in `relay/` runs it on port 8787, which development builds of
+the game connect to. Set `VITE_RELAY_URL` to point a build somewhere else.

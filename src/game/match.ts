@@ -1,3 +1,4 @@
+import { applyCommand, type Command } from '../sim/commands';
 import { DT } from '../sim/entities';
 import { WEAPONS } from '../sim/rules';
 import { createMission, type MissionDef } from '../sim/mission';
@@ -8,6 +9,8 @@ import { drawHud } from '../view/hud';
 import { Audio, type Effect } from './audio';
 import { Controller } from './controller';
 import { bindInput } from './input';
+import { DELAY, Lockstep } from './lockstep';
+import type { OnlineGame } from './net';
 import { replyFor, type ReplyKind } from './voices';
 
 export interface Message {
@@ -30,6 +33,11 @@ export class Match {
   readonly audio: Audio;
   readonly settings: GameSettings | null;
   readonly mission: MissionDef | null;
+  /** A multiplayer battle's connection and lockstep, if this is one. */
+  readonly online: OnlineGame | null = null;
+  readonly lockstep: Lockstep | null = null;
+  /** Seconds spent waiting on another player's orders. */
+  stalled = 0;
   view: GameView | null = null;
   controller: Controller | null = null;
   speed = 1;
@@ -51,10 +59,30 @@ export class Match {
   private menuHandler: () => void = () => undefined;
 
   constructor(
-    source: { settings: GameSettings } | { mission: MissionDef } | { world: World },
+    source:
+      | { settings: GameSettings }
+      | { mission: MissionDef }
+      | { world: World }
+      | { online: OnlineGame },
     audio: Audio,
   ) {
-    if ('world' in source) {
+    if ('online' in source) {
+      const online = source.online;
+      this.online = online;
+      this.settings = online.settings;
+      this.mission = null;
+      this.world = createGame(online.settings);
+      this.world.local = online.local;
+      const lockstep = new Lockstep(
+        this.world,
+        (bundle) => {
+          online.net.sendTurn(bundle);
+        },
+        online.local,
+        online.seats.length,
+      );
+      this.lockstep = lockstep;
+    } else if ('world' in source) {
       // A saved battle, carrying on where it was left.
       this.world = source.world;
       this.mission = source.world.mission?.def ?? null;
@@ -83,6 +111,7 @@ export class Match {
       this.audio.play(cue);
       if (cue === 'select' || cue === 'move' || cue === 'attack') this.answer(cue);
     };
+    controller.issue = (command) => this.issue(command);
     controller.onTab = this.tabHandler;
     controller.onMenu = this.menuHandler;
     this.view = view;
@@ -90,11 +119,29 @@ export class Match {
     this.overlay = overlay;
     this.hud = overlay.getContext('2d');
     this.unbind = bindInput(container, canvas, this);
+    this.listen();
     this.running = true;
     this.last = performance.now();
     this.frame = requestAnimationFrame(this.loop);
     this.notify();
     if (import.meta.env.DEV) (window as unknown as { hotwar?: Match }).hotwar = this;
+  }
+
+  /**
+   * Sends one of your commands: carried out at once in single player (returning whether it
+   * worked), or handed to the network in multiplayer (returning null).
+   */
+  issue(command: Command): boolean | null {
+    if (this.lockstep) {
+      this.lockstep.queue(command);
+      return null;
+    }
+    return applyCommand(this.world, this.world.local, command);
+  }
+
+  /** Leaves a multiplayer battle: the others see you surrender. */
+  leave(): void {
+    this.online?.net.close();
   }
 
   /** The most senior unit in the selection answers the order. */
@@ -107,7 +154,28 @@ export class Match {
     this.audio.reply(replyFor(lead.type, player.faction, kind));
   }
 
+  /** Takes in other players' orders (any that arrived early are waiting). */
+  private listen(): void {
+    const online = this.online;
+    const lockstep = this.lockstep;
+    if (!online || !lockstep) return;
+    online.net.attach({
+      turn: (seat, bundle) => {
+        const player = online.seats.indexOf(seat);
+        if (player >= 0 && player !== online.local) lockstep.receive(player, bundle);
+      },
+      left: (seat, lastTurn) => {
+        const player = online.seats.indexOf(seat);
+        if (player < 0 || player === online.local) return;
+        lockstep.leave(player, lastTurn);
+        const name = this.world.players[player]?.name ?? 'A player';
+        this.say(`${name} left the battle.`, 'info', false);
+      },
+    });
+  }
+
   detach(): void {
+    this.online?.net.detach();
     this.running = false;
     cancelAnimationFrame(this.frame);
     this.unbind?.();
@@ -142,12 +210,15 @@ export class Match {
   }
 
   setPaused(paused: boolean): void {
+    // Nobody can pause a multiplayer battle on everyone else.
+    if (this.lockstep) return;
     if (this.paused === paused) return;
     this.paused = paused;
     this.notify();
   }
 
   setSpeed(speed: number): void {
+    if (this.lockstep) return;
     this.speed = speed;
   }
 
@@ -173,14 +244,27 @@ export class Match {
     this.last = now;
     if (!this.paused) {
       this.accumulator += real * this.speed;
+      const lockstep = this.lockstep;
+      // Fallen behind the other players? Run a little faster until caught up.
+      if (lockstep && lockstep.backlog() > DELAY + 1) this.accumulator += DT;
       let steps = 0;
       while (this.accumulator >= DT && steps < 10) {
-        this.world.tick();
+        if (lockstep) {
+          if (!lockstep.advance()) {
+            this.accumulator = Math.min(this.accumulator, DT);
+            break;
+          }
+        } else {
+          this.world.tick();
+        }
         this.drain();
         this.accumulator -= DT;
         steps++;
       }
       if (steps === 10) this.accumulator = 0;
+      const wasStalled = this.stalled > 1;
+      this.stalled = lockstep?.waiting ? this.stalled + real : 0;
+      if (wasStalled !== this.stalled > 1) this.notify();
     }
     controller.update(real);
     view.render(

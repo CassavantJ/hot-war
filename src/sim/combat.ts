@@ -10,6 +10,7 @@ import {
   type WeaponId,
 } from './rules';
 import type { Vec3, World } from './world';
+import { dcos, dhypot, dsin } from './dmath';
 
 export interface Projectile {
   weapon: WeaponId;
@@ -105,9 +106,9 @@ function muzzle(shooter: Shooter): Vec3 {
   }
   const height = shooter.def.kind === 'infantry' ? 0.22 : 0.35;
   return {
-    x: shooter.x + Math.cos(shooter.turret) * shooter.def.radius * 0.8,
+    x: shooter.x + dcos(shooter.turret) * shooter.def.radius * 0.8,
     y: shooter.alt + height,
-    z: shooter.z + Math.sin(shooter.turret) * shooter.def.radius * 0.8,
+    z: shooter.z + dsin(shooter.turret) * shooter.def.radius * 0.8,
   };
 }
 
@@ -313,7 +314,7 @@ export function tickProjectiles(world: World): void {
       }
     }
     if (shot.kind === 'artillery') {
-      const total = Math.max(0.5, Math.hypot(shot.tx - shot.sx, shot.tz - shot.sz));
+      const total = Math.max(0.5, dhypot(shot.tx - shot.sx, shot.tz - shot.sz));
       shot.progress = Math.min(1, shot.progress + (shot.speed * DT) / total);
       const t = shot.progress;
       shot.x = shot.sx + (shot.tx - shot.sx) * t;
@@ -334,7 +335,7 @@ export function tickProjectiles(world: World): void {
     const dx = shot.tx - shot.x;
     const dy = shot.ty - shot.y;
     const dz = shot.tz - shot.z;
-    const distance = Math.hypot(dx, dy, dz);
+    const distance = dhypot(dx, dy, dz);
     const step = shot.speed * DT;
     if (distance <= step) {
       shot.x = shot.tx;
@@ -379,7 +380,7 @@ function splash(
   world.forUnitsNear(at.x, at.z, radius, (unit) => {
     if (unit.id === skip || !world.isEnemy(owner, unit.owner)) return;
     if (isAirborne(unit) !== inAir) return;
-    const falloff = 1 - (0.75 * Math.hypot(unit.x - at.x, unit.z - at.z)) / radius;
+    const falloff = 1 - (0.75 * dhypot(unit.x - at.x, unit.z - at.z)) / radius;
     dealDamage(world, unit, damage * falloff, warhead, attacker, owner);
   });
   if (inAir) return;
@@ -658,7 +659,7 @@ export function findTarget(world: World, shooter: Shooter, radius: number): Enti
   };
   world.forUnitsNear(x, z, radius + 1, (unit) => {
     if (!world.isEnemy(shooter.owner, unit.owner)) return;
-    consider(unit, Math.hypot(unit.x - x, unit.z - z));
+    consider(unit, dhypot(unit.x - x, unit.z - z));
   });
   for (const structure of world.structures) {
     if (structure.dead || structure.def.role === 'wall') continue;

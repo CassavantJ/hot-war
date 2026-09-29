@@ -2,6 +2,7 @@ import { dealDamage } from './combat';
 import { distanceTo, DT, type Structure } from './entities';
 import { mobilityOf, SUPERWEAPONS, type SuperweaponId } from './rules';
 import type { World } from './world';
+import { dcos, dhypot, dsin } from './dmath';
 
 export interface Storm {
   x: number;
@@ -64,7 +65,7 @@ function blast(
 ): void {
   world.forUnitsNear(x, z, radius, (unit) => {
     if (unit.flying && !air) return;
-    const falloff = 1 - (0.7 * Math.hypot(unit.x - x, unit.z - z)) / radius;
+    const falloff = 1 - (0.7 * dhypot(unit.x - x, unit.z - z)) / radius;
     dealDamage(world, unit, damage * falloff, warhead, null, owner);
   });
   for (const structure of world.structures) {
@@ -182,8 +183,8 @@ export function tickSuperweapons(world: World): void {
       storm.next = 0.22 + world.rng.next() * 0.25;
       const angle = world.rng.range(0, Math.PI * 2);
       const distance = Math.sqrt(world.rng.next()) * SUPERWEAPONS.storm.radius;
-      const x = storm.x + Math.cos(angle) * distance;
-      const z = storm.z + Math.sin(angle) * distance;
+      const x = storm.x + dcos(angle) * distance;
+      const z = storm.z + dsin(angle) * distance;
       world.emit({ kind: 'bolt', x, z });
       blast(world, x, z, 1.2, BOLT_DAMAGE, 'shock', storm.owner, true);
     }

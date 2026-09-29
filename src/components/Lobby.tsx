@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useState } from 'react';
 
 import {
   CREDIT_OPTIONS,
@@ -9,24 +9,27 @@ import {
   type SeatSetup,
 } from '../game/lobby';
 import { SPEEDS } from '../game/match';
-import { buildMap, MAPS, mapSpec } from '../sim/maps';
+import { MAPS, mapSpec } from '../sim/maps';
 import type { MissionDef } from '../sim/mission';
 import type { Difficulty } from '../sim/player';
 import { FACTIONS, type Faction } from '../sim/rules';
 import { COLORS } from '../sim/setup';
 import type { StartingUnits } from '../sim/world';
-import { drawPreview } from '../view/minimap';
+import type { OnlineGame } from '../game/net';
 import type { World } from '../sim/world';
 import { Campaign } from './Campaign';
+import { MapPreview } from './MapPreview';
 import { Help } from './Help';
 import styles from './Lobby.module.css';
+import { Multiplayer } from './Multiplayer';
 import { SavedGames } from './SavedGames';
 
-export type LobbyMode = 'skirmish' | 'campaign' | 'load';
+export type LobbyMode = 'skirmish' | 'campaign' | 'online' | 'load';
 
 const MODES: { id: LobbyMode; label: string }[] = [
   { id: 'skirmish', label: 'Skirmish' },
   { id: 'campaign', label: 'Campaign' },
+  { id: 'online', label: 'Multiplayer' },
   { id: 'load', label: 'Load game' },
 ];
 
@@ -38,6 +41,7 @@ interface Props {
   onStart: (setup: LobbySetup) => void;
   onMission: (mission: MissionDef) => void;
   onLoad: (world: World) => void;
+  onOnline: (game: OnlineGame) => void;
 }
 
 const STARTING: { value: StartingUnits; label: string }[] = [
@@ -48,21 +52,17 @@ const STARTING: { value: StartingUnits; label: string }[] = [
 
 const DIFFICULTIES: Difficulty[] = ['easy', 'normal', 'hard'];
 
-function MapPreview({ mapId }: { mapId: string }) {
-  const canvas = useRef<HTMLCanvasElement>(null);
-  useEffect(() => {
-    const element = canvas.current;
-    if (!element) return;
-    const built = buildMap(mapSpec(mapId));
-    drawPreview(element, built.map, built.neutrals);
-  }, [mapId]);
-  return (
-    <canvas ref={canvas} className={styles.preview} width={320} height={200} aria-hidden="true" />
-  );
-}
-
 /** Skirmish setup: map, players and options. */
-export function Lobby({ setup, mode, onMode, onChange, onStart, onMission, onLoad }: Props) {
+export function Lobby({
+  setup,
+  mode,
+  onMode,
+  onChange,
+  onStart,
+  onMission,
+  onLoad,
+  onOnline,
+}: Props) {
   const [helpOpen, setHelpOpen] = useState(false);
   const spec = mapSpec(setup.mapId);
   const update = (next: LobbySetup) => {
@@ -111,6 +111,8 @@ export function Lobby({ setup, mode, onMode, onChange, onStart, onMission, onLoa
         <Campaign onMission={onMission} />
       ) : mode === 'load' ? (
         <SavedGames onLoad={onLoad} />
+      ) : mode === 'online' ? (
+        <Multiplayer onStart={onOnline} />
       ) : (
         <div className={styles.columns}>
           <section className={styles.panel} aria-labelledby="maps-heading">

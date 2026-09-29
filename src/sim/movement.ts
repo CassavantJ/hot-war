@@ -4,6 +4,7 @@ import { GROUND } from './map';
 import { lineClear, smoothPath, type Point } from './path';
 import { mobilityOf } from './rules';
 import type { World } from './world';
+import { datan2, dcos, dhypot, dsin } from './dmath';
 
 /** How many paths are worked out per step; the rest wait their turn. */
 const PATHS_PER_STEP = 12;
@@ -31,7 +32,7 @@ export function moveTo(world: World, unit: Unit, x: number, z: number): void {
   const mobility = mobilityOf(unit.def);
   if (
     !map.isBlocked(goal, mobility) &&
-    Math.hypot(tx - unit.x, tz - unit.z) < 10 &&
+    dhypot(tx - unit.x, tz - unit.z) < 10 &&
     lineClear(map, unit.x, unit.z, tx, tz, mobility)
   ) {
     unit.waypoints = [{ x: tx, z: tz }];
@@ -122,7 +123,7 @@ export function advance(world: World, unit: Unit): boolean {
   const def = unit.def;
   const dx = point.x - unit.x;
   const dz = point.z - unit.z;
-  const distance = Math.hypot(dx, dz);
+  const distance = dhypot(dx, dz);
   const last = unit.waypoints.length === 1;
   if (distance < (last ? 0.05 : 0.25)) {
     unit.waypoints.shift();
@@ -132,7 +133,7 @@ export function advance(world: World, unit: Unit): boolean {
     }
     return false;
   }
-  const desired = Math.atan2(dz, dx);
+  const desired = datan2(dz, dx);
   let pace = 1;
   if (def.kind === 'infantry' || def.flies === 'jumpjet') {
     unit.facing = desired;
@@ -144,7 +145,7 @@ export function advance(world: World, unit: Unit): boolean {
         unit.moving = false;
         return false;
       }
-      pace = Math.max(0.35, Math.cos(diff));
+      pace = Math.max(0.35, dcos(diff));
     }
   }
   const step = Math.min(distance, unitSpeed(world, unit) * pace * DT);
@@ -171,7 +172,7 @@ function checkStuck(world: World, unit: Unit): void {
   unit.stuckTimer += DT;
   if (unit.stuckTimer < 1.5) return;
   unit.stuckTimer = 0;
-  const progress = Math.hypot(unit.x - unit.progressX, unit.z - unit.progressZ);
+  const progress = dhypot(unit.x - unit.progressX, unit.z - unit.progressZ);
   unit.progressX = unit.x;
   unit.progressZ = unit.z;
   if (progress > unit.def.speed * 0.4) {
@@ -179,7 +180,7 @@ function checkStuck(world: World, unit: Unit): void {
     return;
   }
   unit.stuckCount++;
-  const left = Math.hypot(unit.destX - unit.x, unit.destZ - unit.z);
+  const left = dhypot(unit.destX - unit.x, unit.destZ - unit.z);
   if ((unit.stuckCount >= 2 && left < 2.5) || unit.stuckCount >= 6) {
     stopMoving(unit);
     return;
@@ -214,14 +215,14 @@ export function resolveCollisions(world: World): void {
       if ((other.def.flies !== undefined) !== air) return;
       let dx = other.x - unit.x;
       let dz = other.z - unit.z;
-      let distance = Math.hypot(dx, dz);
+      let distance = dhypot(dx, dz);
       const reach = unit.def.radius + other.def.radius;
       if (distance >= reach) return;
       if (!air && crush(world, unit, other, distance)) return;
       if (distance < 1e-4) {
         const angle = ((unit.id * 97 + other.id * 31) % 628) / 100;
-        dx = Math.cos(angle);
-        dz = Math.sin(angle);
+        dx = dcos(angle);
+        dz = dsin(angle);
         distance = 1;
       }
       const overlap = reach - distance;

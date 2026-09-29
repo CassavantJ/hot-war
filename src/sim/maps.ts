@@ -1,6 +1,7 @@
 import { GameMap, GROUND, type Theme } from './map';
 import { hash2 } from './random';
 import { MAX_ORE, STRUCTURES, type StructureType } from './rules';
+import { dhypot } from './dmath';
 
 type XZ = [number, number];
 
@@ -299,7 +300,7 @@ function segmentDistance(px: number, pz: number, a: XZ, b: XZ): number {
   const length = dx * dx + dz * dz;
   const t =
     length === 0 ? 0 : Math.max(0, Math.min(1, ((px - a[0]) * dx + (pz - a[1]) * dz) / length));
-  return Math.hypot(px - (a[0] + dx * t), pz - (a[1] + dz * t));
+  return dhypot(px - (a[0] + dx * t), pz - (a[1] + dz * t));
 }
 
 function lineDistance(px: number, pz: number, points: XZ[]): number {
@@ -365,7 +366,7 @@ export function buildMap(spec: MapSpec, seed = 1): BuiltMap {
       const [lx, lz] = transform(spec, copy, lake.at);
       forCells(lx, lz, lake.r * 1.3, (index, x, z) => {
         const wobble = 0.8 + 0.45 * fairNoise(spec, x, z, seed * 7 + 3, 2.5);
-        if (Math.hypot(x - lx, z - lz) <= lake.r * wobble) map.ground[index] = GROUND.water;
+        if (dhypot(x - lx, z - lz) <= lake.r * wobble) map.ground[index] = GROUND.water;
       });
     });
   }
@@ -393,7 +394,7 @@ export function buildMap(spec: MapSpec, seed = 1): BuiltMap {
       const [rx, rz] = transform(spec, copy, rocks.at);
       forCells(rx, rz, rocks.r * 1.3, (index, x, z) => {
         const wobble = 0.75 + 0.5 * fairNoise(spec, x, z, seed * 17 + 2, 1.5);
-        if (Math.hypot(x - rx, z - rz) <= rocks.r * wobble) map.ground[index] = GROUND.cliff;
+        if (dhypot(x - rx, z - rz) <= rocks.r * wobble) map.ground[index] = GROUND.cliff;
       });
     });
   }
@@ -401,7 +402,7 @@ export function buildMap(spec: MapSpec, seed = 1): BuiltMap {
     each(gap, (copy) => {
       const [gx, gz] = transform(spec, copy, gap.at);
       forCells(gx, gz, gap.r, (index, x, z) => {
-        if (Math.hypot(x - gx, z - gz) <= gap.r) map.ground[index] = GROUND.rough;
+        if (dhypot(x - gx, z - gz) <= gap.r) map.ground[index] = GROUND.rough;
       });
     });
   }
@@ -411,7 +412,7 @@ export function buildMap(spec: MapSpec, seed = 1): BuiltMap {
       const [ix, iz] = transform(spec, copy, island.at);
       forCells(ix, iz, island.r * 1.3, (index, x, z) => {
         const wobble = 0.8 + 0.4 * fairNoise(spec, x, z, seed * 19 + 8, 1.5);
-        if (Math.hypot(x - ix, z - iz) <= island.r * wobble) map.ground[index] = GROUND.clear;
+        if (dhypot(x - ix, z - iz) <= island.r * wobble) map.ground[index] = GROUND.clear;
       });
     });
   }
@@ -420,7 +421,7 @@ export function buildMap(spec: MapSpec, seed = 1): BuiltMap {
     each(ford, (copy) => {
       const [fx, fz] = transform(spec, copy, ford.at);
       forCells(fx, fz, ford.r, (index, x, z) => {
-        if (Math.hypot(x - fx, z - fz) <= ford.r && map.ground[index] === GROUND.water) {
+        if (dhypot(x - fx, z - fz) <= ford.r && map.ground[index] === GROUND.water) {
           map.ground[index] = GROUND.sand;
         }
       });
@@ -468,7 +469,7 @@ export function buildMap(spec: MapSpec, seed = 1): BuiltMap {
     each(plaza, (copy) => {
       const [px, pz] = transform(spec, copy, plaza.at);
       forCells(px, pz, plaza.r, (index, x, z) => {
-        if (Math.hypot(x - px, z - pz) <= plaza.r && map.ground[index] !== GROUND.water) {
+        if (dhypot(x - px, z - pz) <= plaza.r && map.ground[index] !== GROUND.water) {
           map.ground[index] = GROUND.pavement;
         }
       });
@@ -483,7 +484,7 @@ export function buildMap(spec: MapSpec, seed = 1): BuiltMap {
     each(forest, (copy) => {
       const [fx, fz] = transform(spec, copy, forest.at);
       forCells(fx, fz, forest.r, (index, x, z) => {
-        const edge = 1 - Math.hypot(x - fx, z - fz) / forest.r;
+        const edge = 1 - dhypot(x - fx, z - fz) / forest.r;
         if (edge <= 0) return;
         const roll = fairNoise(spec, x, z, seed * 23 + 9, 0.7);
         if (roll < forest.density * (0.4 + edge)) treeAt(index, 1 + (Math.floor(roll * 97) % 3));
@@ -503,7 +504,7 @@ export function buildMap(spec: MapSpec, seed = 1): BuiltMap {
       const [sx, sz] = transform(spec, copy, start.at);
       starts.push([sx, sz]);
       forCells(sx, sz, 8, (index, x, z) => {
-        if (Math.hypot(x - sx, z - sz) > 8) return;
+        if (dhypot(x - sx, z - sz) > 8) return;
         map.tree[index] = 0;
         const ground = map.ground[index];
         if (ground === GROUND.water || ground === GROUND.cliff || ground === GROUND.road) {
@@ -541,7 +542,7 @@ export function buildMap(spec: MapSpec, seed = 1): BuiltMap {
     each(ore, (copy) => {
       const [ox, oz] = transform(spec, copy, ore.at);
       forCells(ox, oz, ore.r * 1.3, (index, x, z) => {
-        const distance = Math.hypot(x - ox, z - oz);
+        const distance = dhypot(x - ox, z - oz);
         const wobble = 0.8 + 0.4 * fairNoise(spec, x, z, seed * 31 + 6, 1.8);
         const edge = 1 - distance / (ore.r * wobble);
         if (edge <= 0) return;

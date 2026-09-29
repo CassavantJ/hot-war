@@ -98,8 +98,8 @@ export class World {
   readonly players: Player[];
   readonly settings: GameSettings;
   readonly rng: Random;
-  /** The human player. */
-  readonly local = 0;
+  /** The player on this screen (in multiplayer, each screen has its own). */
+  local = 0;
   units: Unit[] = [];
   structures: Structure[] = [];
   projectiles: Projectile[] = [];
@@ -364,6 +364,45 @@ export class World {
     }
   }
 
+  /** Knocks a player out: their army blows up and their buildings fall. */
+  defeat(player: Player): void {
+    if (player.defeated) return;
+    player.defeated = true;
+    for (const unit of this.units) {
+      if (unit.owner === player.index && !unit.dead) {
+        unit.dead = true;
+        this.emit({ kind: 'explode', at: { x: unit.x, y: unit.alt, z: unit.z }, size: 0.6 });
+      }
+    }
+    for (const structure of this.structures) {
+      if (structure.owner !== player.index || structure.dead) continue;
+      if (structure.def.role === 'civilian' || structure.def.role === 'derrick') {
+        structure.owner = -1;
+        continue;
+      }
+      structure.dead = true;
+      this.clearStructure(structure);
+      this.emit({
+        kind: 'destroyed',
+        id: structure.id,
+        x: structure.x,
+        z: structure.z,
+        w: structure.w,
+        h: structure.h,
+      });
+    }
+    for (const other of this.players) {
+      if (other.index !== player.index) {
+        this.announce(
+          other.index,
+          player.index === this.local ? 'You have been defeated.' : `${player.name} defeated.`,
+          other.index === this.local && this.isEnemy(other.index, player.index) ? 'good' : 'bad',
+        );
+      }
+    }
+    if (player.index === this.local) this.announce(player.index, 'Mission failed.', 'bad');
+  }
+
   /** Knocks out players with nothing left, and ends the game when one side remains. */
   checkVictory(): void {
     for (const player of this.players) {
@@ -380,41 +419,7 @@ export class World {
       );
       const hasUnits = this.units.some((unit) => unit.owner === player.index);
       const alive = this.settings.shortGame ? hasStructure || hasTruck : hasStructure || hasUnits;
-      if (alive) continue;
-      player.defeated = true;
-      for (const unit of this.units) {
-        if (unit.owner === player.index && !unit.dead) {
-          unit.dead = true;
-          this.emit({ kind: 'explode', at: { x: unit.x, y: unit.alt, z: unit.z }, size: 0.6 });
-        }
-      }
-      for (const structure of this.structures) {
-        if (structure.owner !== player.index || structure.dead) continue;
-        if (structure.def.role === 'civilian' || structure.def.role === 'derrick') {
-          structure.owner = -1;
-          continue;
-        }
-        structure.dead = true;
-        this.clearStructure(structure);
-        this.emit({
-          kind: 'destroyed',
-          id: structure.id,
-          x: structure.x,
-          z: structure.z,
-          w: structure.w,
-          h: structure.h,
-        });
-      }
-      for (const other of this.players) {
-        if (other.index !== player.index) {
-          this.announce(
-            other.index,
-            player.index === this.local ? 'You have been defeated.' : `${player.name} defeated.`,
-            other.index === this.local && this.isEnemy(other.index, player.index) ? 'good' : 'bad',
-          );
-        }
-      }
-      if (player.index === this.local) this.announce(player.index, 'Mission failed.', 'bad');
+      if (!alive) this.defeat(player);
     }
     if (this.outcome !== 'playing') return;
     const me = this.players[this.local];

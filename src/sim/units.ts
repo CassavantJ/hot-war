@@ -25,6 +25,7 @@ import { advance, fly, isMoving, moveTo, stopMoving } from './movement';
 import { placementCheck } from './production';
 import { HQ, WEAPONS, type WeaponDef } from './rules';
 import type { World } from './world';
+import { dcos, dhypot, dsin } from './dmath';
 
 const TURRET_TURN = 5;
 const SCAN_EVERY = 0.4;
@@ -186,7 +187,7 @@ function attack(world: World, unit: Unit, target: Entity, mayMove: boolean): voi
     aim(unit, point.x, point.z, false);
     if (!mayMove || unit.dugIn) return;
     unit.repathTimer -= DT;
-    const drift = Math.hypot(unit.destX - point.x, unit.destZ - point.z);
+    const drift = dhypot(unit.destX - point.x, unit.destZ - point.z);
     if (!isMoving(unit) || (unit.repathTimer <= 0 && drift > 1.5)) {
       unit.repathTimer = 1;
       moveTo(world, unit, point.x, point.z);
@@ -232,7 +233,7 @@ function shoot(
 function tickMove(world: World, unit: Unit, x: number, z: number, attackMove: boolean): void {
   if (attackMove) {
     if (autoEngage(world, unit, 1)) return;
-    if (!isMoving(unit) && Math.hypot(unit.x - x, unit.z - z) > 0.6) moveTo(world, unit, x, z);
+    if (!isMoving(unit) && dhypot(unit.x - x, unit.z - z) > 0.6) moveTo(world, unit, x, z);
   } else if (unit.def.turret && unit.def.weapons.length > 0) {
     // Turrets shoot on the move without stopping.
     opportunisticFire(world, unit);
@@ -276,7 +277,7 @@ function attackSpot(world: World, unit: Unit, x: number, z: number): void {
     return;
   }
   const weapon = WEAPONS[id];
-  const distance = Math.hypot(x - unit.x, z - unit.z);
+  const distance = dhypot(x - unit.x, z - unit.z);
   if (distance > weapon.range) {
     if (unit.dugIn) {
       finish(unit);
@@ -293,13 +294,13 @@ function attackSpot(world: World, unit: Unit, x: number, z: number): void {
 function tickGuard(world: World, unit: Unit, x: number, z: number): void {
   const fighting = autoEngage(world, unit, GUARD_LEASH - 2);
   if (fighting) {
-    if (Math.hypot(unit.x - x, unit.z - z) > GUARD_LEASH) {
+    if (dhypot(unit.x - x, unit.z - z) > GUARD_LEASH) {
       unit.target = 0;
       moveTo(world, unit, x, z);
     }
     return;
   }
-  if (Math.hypot(unit.x - x, unit.z - z) > 0.8) {
+  if (dhypot(unit.x - x, unit.z - z) > 0.8) {
     if (!isMoving(unit)) moveTo(world, unit, x, z);
     advance(world, unit);
   }
@@ -343,7 +344,7 @@ function board(world: World, unit: Unit, transport: Unit): void {
     return;
   }
   const reach = transport.def.radius + unit.def.radius + 0.45;
-  if (Math.hypot(unit.x - transport.x, unit.z - transport.z) > reach) {
+  if (dhypot(unit.x - transport.x, unit.z - transport.z) > reach) {
     unit.repathTimer -= DT;
     if (!isMoving(unit) || unit.repathTimer <= 0) {
       unit.repathTimer = 0.8;
@@ -417,9 +418,9 @@ function tickEnter(world: World, unit: Unit, id: number): void {
   }
   if (structure.def.walkable) {
     // Drive onto the repair pad and wait there.
-    if (Math.hypot(unit.x - structure.cx, unit.z - structure.cz) > 0.5) {
+    if (dhypot(unit.x - structure.cx, unit.z - structure.cz) > 0.5) {
       if (!isMoving(unit)) moveTo(world, unit, structure.cx, structure.cz);
-      if (advance(world, unit) && Math.hypot(unit.x - structure.cx, unit.z - structure.cz) > 1.2) {
+      if (advance(world, unit) && dhypot(unit.x - structure.cx, unit.z - structure.cz) > 1.2) {
         finish(unit);
       }
       return;
@@ -604,8 +605,8 @@ function tickJet(world: World, unit: Unit): void {
     }
     return;
   }
-  let goalX = unit.x + Math.cos(unit.facing) * 2;
-  let goalZ = unit.z + Math.sin(unit.facing) * 2;
+  let goalX = unit.x + dcos(unit.facing) * 2;
+  let goalZ = unit.z + dsin(unit.facing) * 2;
   let landing = false;
   if (order.kind === 'attack' && unit.ammo > 0) {
     const target = world.get(order.target);
@@ -638,7 +639,7 @@ function tickJet(world: World, unit: Unit): void {
     goalZ = spot.z;
     landing = true;
   }
-  const distance = Math.hypot(goalX - unit.x, goalZ - unit.z);
+  const distance = dhypot(goalX - unit.x, goalZ - unit.z);
   if (landing && distance < 0.35) {
     unit.x = goalX;
     unit.z = goalZ;
@@ -655,7 +656,7 @@ function tickJet(world: World, unit: Unit): void {
   unit.facing = turnTowards(unit.facing, desired, turn * DT);
   const slow = landing ? Math.max(0.25, Math.min(1, distance / 3)) : 1;
   const step = def.speed * slow * DT;
-  unit.x = Math.min(world.map.width - 0.5, Math.max(0.5, unit.x + Math.cos(unit.facing) * step));
-  unit.z = Math.min(world.map.height - 0.5, Math.max(0.5, unit.z + Math.sin(unit.facing) * step));
+  unit.x = Math.min(world.map.width - 0.5, Math.max(0.5, unit.x + dcos(unit.facing) * step));
+  unit.z = Math.min(world.map.height - 0.5, Math.max(0.5, unit.z + dsin(unit.facing) * step));
   unit.moving = true;
 }

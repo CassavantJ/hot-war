@@ -6,6 +6,7 @@ import { Player, type Difficulty } from './player';
 import { STRUCTURES, type Faction, type StructureType, type UnitType } from './rules';
 import { revealAround } from './shroud';
 import { World } from './world';
+import { dcos, dhypot, dsin } from './dmath';
 
 export type Objective =
   | { kind: 'destroyAll'; owner: number; text: string }
@@ -142,8 +143,8 @@ export function createMission(def: MissionDef, seed = 1): World {
       const unit = world.addUnit(
         spec.type,
         spec.owner,
-        spec.x + Math.cos(angle) * spread,
-        spec.z + Math.sin(angle) * spread,
+        spec.x + dcos(angle) * spread,
+        spec.z + dsin(angle) * spread,
       );
       if (spec.tag && i === 0) tags.set(spec.tag, unit.id);
     }
@@ -234,7 +235,7 @@ export function tickMission(world: World, state: MissionState): void {
           world.units.some(
             (unit) =>
               unit.owner === 0 &&
-              Math.hypot(unit.x - objective.x, unit.z - objective.z) <= objective.radius,
+              dhypot(unit.x - objective.x, unit.z - objective.z) <= objective.radius,
           )
         ) {
           complete(world, state, i);

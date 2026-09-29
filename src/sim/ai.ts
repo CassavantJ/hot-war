@@ -22,6 +22,7 @@ import {
   type UnitType,
 } from './rules';
 import type { World } from './world';
+import { datan2, dcos, dhypot, dsin } from './dmath';
 
 interface Tuning {
   /** Seconds between decisions. */
@@ -250,7 +251,7 @@ export class AiBrain {
       if (!spot) continue;
       const cx = spot.x + 2;
       const cz = spot.z + 2;
-      if (Math.hypot(unit.x - cx, unit.z - cz) < 0.6) {
+      if (dhypot(unit.x - cx, unit.z - cz) < 0.6) {
         unit.order = { kind: 'deploy' };
       } else {
         orderMove(world, [unit], cx, cz);
@@ -565,7 +566,7 @@ export class AiBrain {
     for (const unit of world.units) {
       if (unit.owner !== enemy.index || unit.def.weapons.length === 0 || unit.def.harvester)
         continue;
-      if (unit.def.naval || Math.hypot(unit.x - x, unit.z - z) > 22) continue;
+      if (unit.def.naval || dhypot(unit.x - x, unit.z - z) > 22) continue;
       total += unit.def.cost;
     }
     for (const structure of world.structures) {
@@ -599,7 +600,7 @@ export class AiBrain {
       if (!unit.def.dugInWeapon || unit.dugIn || unit.digging > 0 || this.attackers.has(unit.id))
         continue;
       if (unit.order.kind !== 'idle') continue;
-      if (Math.hypot(unit.x - home.x, unit.z - home.z) > 5) continue;
+      if (dhypot(unit.x - home.x, unit.z - home.z) > 5) continue;
       unit.order = { kind: 'deploy' };
     }
   }
@@ -608,7 +609,7 @@ export class AiBrain {
     if (!enemy) return { x: x, z: z + 5 };
     const dx = enemy.start.x - x;
     const dz = enemy.start.z - z;
-    const length = Math.hypot(dx, dz) || 1;
+    const length = dhypot(dx, dz) || 1;
     return { x: x + (dx / length) * 7, z: z + (dz / length) * 7 };
   }
 
@@ -622,8 +623,7 @@ export class AiBrain {
     let bestDistance = Infinity;
     for (const player of world.players) {
       if (player.defeated || !world.isEnemy(this.player.index, player.index)) continue;
-      const distance =
-        Math.hypot(player.start.x - x, player.start.z - z) * this.rng.range(0.8, 1.2);
+      const distance = dhypot(player.start.x - x, player.start.z - z) * this.rng.range(0.8, 1.2);
       if (distance < bestDistance) {
         bestDistance = distance;
         best = player;
@@ -645,7 +645,7 @@ export class AiBrain {
     let bestDistance = Infinity;
     for (const structure of world.structures) {
       if (structure.owner !== enemy.index || structure.def.role === 'wall') continue;
-      const distance = Math.hypot(structure.cx - x, structure.cz - z);
+      const distance = dhypot(structure.cx - x, structure.cz - z);
       if (distance < bestDistance) {
         bestDistance = distance;
         best = structure;
@@ -654,7 +654,7 @@ export class AiBrain {
     if (!best) {
       for (const unit of world.units) {
         if (unit.owner !== enemy.index) continue;
-        const distance = Math.hypot(unit.x - x, unit.z - z);
+        const distance = dhypot(unit.x - x, unit.z - z);
         if (distance < bestDistance) {
           bestDistance = distance;
           best = unit;
@@ -672,7 +672,7 @@ export class AiBrain {
     const world = this.world;
     let radius = 14;
     for (const structure of this.own(world.structures)) {
-      radius = Math.max(radius, Math.hypot(structure.cx - x, structure.cz - z) + 7);
+      radius = Math.max(radius, dhypot(structure.cx - x, structure.cz - z) + 7);
     }
     let best: { x: number; z: number; value: number } | null = null;
     let bestDistance = radius;
@@ -680,7 +680,7 @@ export class AiBrain {
     for (const unit of world.units) {
       if (!world.isEnemy(this.player.index, unit.owner) || unit.inside) continue;
       if (unit.def.weapons.length === 0 && !unit.def.engineer) continue;
-      const distance = Math.hypot(unit.x - x, unit.z - z);
+      const distance = dhypot(unit.x - x, unit.z - z);
       if (distance > radius) continue;
       value += unit.def.cost;
       if (distance < bestDistance) {
@@ -701,7 +701,7 @@ export class AiBrain {
       for (const structure of world.structures) {
         if (structure.def.role !== 'derrick' || structure.owner === this.player.index) continue;
         if (structure.owner >= 0 && !world.isEnemy(this.player.index, structure.owner)) continue;
-        const distance = Math.hypot(structure.cx - x, structure.cz - z);
+        const distance = dhypot(structure.cx - x, structure.cz - z);
         if (distance < bestDistance) {
           bestDistance = distance;
           best = structure;
@@ -715,7 +715,7 @@ export class AiBrain {
       (structure) =>
         structure.def.role === 'derrick' &&
         structure.owner < 0 &&
-        Math.hypot(structure.cx - x, structure.cz - z) < 40,
+        dhypot(structure.cx - x, structure.cz - z) < 40,
     );
     if (
       free &&
@@ -736,7 +736,7 @@ export class AiBrain {
     for (const structure of world.structures) {
       if (!world.isEnemy(unit.owner, structure.owner) || structure.def.role === 'wall') continue;
       if (structure.charge > 0) continue;
-      const distance = Math.hypot(structure.cx - unit.x, structure.cz - unit.z);
+      const distance = dhypot(structure.cx - unit.x, structure.cz - unit.z);
       if (distance > 14) continue;
       const score = structure.def.cost / 100 - distance;
       if (score > bestScore) {
@@ -765,8 +765,7 @@ export class AiBrain {
       for (const unit of world.units) {
         if (unit.owner !== enemy.index || unit.def.flies) continue;
         const score =
-          (unit.def.harvester ? 2000 : unit.def.cost) -
-          Math.hypot(unit.x - jet.x, unit.z - jet.z) * 20;
+          (unit.def.harvester ? 2000 : unit.def.cost) - dhypot(unit.x - jet.x, unit.z - jet.z) * 20;
         if (score > bestScore) {
           bestScore = score;
           best = unit;
@@ -774,8 +773,7 @@ export class AiBrain {
       }
       for (const structure of world.structures) {
         if (structure.owner !== enemy.index || !structure.def.weapon) continue;
-        const score =
-          structure.def.cost - Math.hypot(structure.cx - jet.x, structure.cz - jet.z) * 20;
+        const score = structure.def.cost - dhypot(structure.cx - jet.x, structure.cz - jet.z) * 20;
         if (score > bestScore) {
           bestScore = score;
           best = structure;
@@ -798,7 +796,7 @@ export class AiBrain {
         if (!map.inside(x, z)) continue;
         const cell = map.index(x, z);
         if (map.isBlocked(cell, 'naval')) continue;
-        const distance = Math.hypot(x + 0.5 - hq.cx, z + 0.5 - hq.cz);
+        const distance = dhypot(x + 0.5 - hq.cx, z + 0.5 - hq.cz);
         if (distance < bestDistance) {
           bestDistance = distance;
           best = { x: x + 0.5, z: z + 0.5, cell };
@@ -888,7 +886,7 @@ export class AiBrain {
         if (!target) continue;
         const dx = rally.x - target.x;
         const dz = rally.z - target.z;
-        const length = Math.hypot(dx, dz) || 1;
+        const length = dhypot(dx, dz) || 1;
         const landing = { x: target.x + (dx / length) * 5, z: target.z + (dz / length) * 5 };
         if (fireSuperweapon(world, structure, rally, landing)) {
           for (const unit of group) this.attackers.add(unit.id);
@@ -908,8 +906,7 @@ export class AiBrain {
     for (const centre of structures) {
       let value = 0;
       for (const other of structures) {
-        if (Math.hypot(other.cx - centre.cx, other.cz - centre.cz) <= radius)
-          value += other.def.cost;
+        if (dhypot(other.cx - centre.cx, other.cz - centre.cz) <= radius) value += other.def.cost;
       }
       if (value > bestValue) {
         bestValue = value;
@@ -938,10 +935,10 @@ export class AiBrain {
     if (def.role === 'defense') {
       const enemy = world.players[this.enemy];
       const angle =
-        (enemy ? Math.atan2(enemy.start.z - hq.cz, enemy.start.x - hq.cx) : 0) +
+        (enemy ? datan2(enemy.start.z - hq.cz, enemy.start.x - hq.cx) : 0) +
         this.rng.range(-0.9, 0.9);
       const distance = this.rng.range(6, 10);
-      return { x: hq.cx + Math.cos(angle) * distance, z: hq.cz + Math.sin(angle) * distance };
+      return { x: hq.cx + dcos(angle) * distance, z: hq.cz + dsin(angle) * distance };
     }
     return { x: hq.cx, z: hq.cz };
   }
@@ -953,7 +950,7 @@ export class AiBrain {
     for (let cz = Math.max(0, Math.floor(z - 26)); cz < Math.min(map.height, z + 26); cz++) {
       for (let cx = Math.max(0, Math.floor(x - 26)); cx < Math.min(map.width, x + 26); cx++) {
         if (map.oreAt(map.index(cx, cz)) === 0) continue;
-        const distance = Math.hypot(cx + 0.5 - x, cz + 0.5 - z);
+        const distance = dhypot(cx + 0.5 - x, cz + 0.5 - z);
         if (distance < bestDistance) {
           bestDistance = distance;
           best = { x: cx + 0.5, z: cz + 0.5 };

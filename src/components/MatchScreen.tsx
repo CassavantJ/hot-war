@@ -5,6 +5,7 @@ import { Match, SPEEDS } from '../game/match';
 import { saveProgress } from '../sim/campaign';
 import type { MissionDef } from '../sim/mission';
 import { FACTIONS } from '../sim/rules';
+import type { OnlineGame } from '../game/net';
 import type { GameSettings, World } from '../sim/world';
 import { Briefing } from './Campaign';
 import { Help } from './Help';
@@ -13,7 +14,11 @@ import { SaveDialog } from './SaveDialog';
 import { Sidebar } from './Sidebar';
 
 interface Props {
-  source: { settings: GameSettings } | { mission: MissionDef } | { world: World };
+  source:
+    | { settings: GameSettings }
+    | { mission: MissionDef }
+    | { world: World }
+    | { online: OnlineGame };
   speed: number;
   onRestart: () => void;
   /** Straight on to the next campaign mission, if there is one. */
@@ -22,9 +27,14 @@ interface Props {
 }
 
 /** A battle in progress: the battlefield, the sidebar, and the menus over them. */
-export function MatchScreen({ source, speed, onRestart, onNext, onQuit }: Props) {
+export function MatchScreen({ source, speed, onRestart, onNext, onQuit: quitToSetup }: Props) {
   const [audio] = useState(() => new Audio());
   const [match] = useState(() => new Match(source, audio));
+  // Quitting a multiplayer battle leaves it: the others see you surrender.
+  const onQuit = () => {
+    match.leave();
+    quitToSetup();
+  };
   const mission = match.mission;
   const [briefing, setBriefing] = useState(mission !== null && !('world' in source));
   const field = useRef<HTMLDivElement>(null);
@@ -85,6 +95,9 @@ export function MatchScreen({ source, speed, onRestart, onNext, onQuit }: Props)
   }, [mission, outcome]);
 
   const me = match.world.players[match.world.local];
+  const online = match.online !== null;
+  const lost = match.online?.net.closed ?? null;
+  const desync = match.lockstep?.desync ?? false;
 
   return (
     <div className={styles.match} data-faction={me?.faction}>
@@ -99,6 +112,9 @@ export function MatchScreen({ source, speed, onRestart, onNext, onQuit }: Props)
           ))}
         </ol>
         {match.paused && !menu && !help && !briefing && <div className={styles.paused}>Paused</div>}
+        {online && match.stalled > 1 && outcome === 'playing' && (
+          <div className={styles.paused}>Waiting for the other players…</div>
+        )}
         {mission && match.world.mission && (
           <ol className={styles.objectives} aria-label="Objectives">
             {mission.objectives.map((objective, i) => (
@@ -124,7 +140,7 @@ export function MatchScreen({ source, speed, onRestart, onNext, onQuit }: Props)
             aria-labelledby="menu-title"
           >
             <h2 id="menu-title" className={styles.dialogTitle}>
-              Paused
+              {online ? 'Menu' : 'Paused'}
             </h2>
             <div className={styles.menuButtons}>
               <button
@@ -136,14 +152,16 @@ export function MatchScreen({ source, speed, onRestart, onNext, onQuit }: Props)
               >
                 Resume
               </button>
-              <button
-                type="button"
-                onClick={() => {
-                  setSaving(true);
-                }}
-              >
-                Save game
-              </button>
+              {!online && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setSaving(true);
+                  }}
+                >
+                  Save game
+                </button>
+              )}
               <button
                 type="button"
                 onClick={() => {
@@ -152,15 +170,17 @@ export function MatchScreen({ source, speed, onRestart, onNext, onQuit }: Props)
               >
                 How to play
               </button>
-              <button type="button" onClick={onRestart}>
-                Restart battle
-              </button>
+              {!online && (
+                <button type="button" onClick={onRestart}>
+                  Restart battle
+                </button>
+              )}
               <button type="button" onClick={onQuit}>
-                Quit to setup
+                {online ? 'Leave battle' : 'Quit to setup'}
               </button>
             </div>
             <div className={styles.settings}>
-              <label>
+              <label hidden={online}>
                 <span>Game speed</span>
                 <select
                   value={gameSpeed}
@@ -232,6 +252,25 @@ export function MatchScreen({ source, speed, onRestart, onNext, onQuit }: Props)
             setSaving(false);
           }}
         />
+      )}
+      {online && outcome === 'playing' && (desync || (lost !== null && lost !== 'You left.')) && (
+        <div className={styles.backdrop} data-late="">
+          <div className={styles.dialog} role="alertdialog" aria-labelledby="lost-title">
+            <h2 id="lost-title" className={styles.dialogTitle}>
+              {desync ? 'Out of sync' : 'Disconnected'}
+            </h2>
+            <p className={styles.endText}>
+              {desync
+                ? 'Your copy of the battle no longer matches the other players’, so it can’t go on.'
+                : lost}
+            </p>
+            <div className={styles.menuButtons}>
+              <button type="button" className={styles.primary} onClick={onQuit}>
+                Back to setup
+              </button>
+            </div>
+          </div>
+        </div>
       )}
       {help && (
         <Help
@@ -327,13 +366,19 @@ export function MatchScreen({ source, speed, onRestart, onNext, onQuit }: Props)
                   Next mission
                 </button>
               ) : null}
-              <button
-                type="button"
-                className={mission && outcome === 'won' && onNext ? undefined : styles.primary}
-                onClick={onRestart}
-              >
-                {mission ? (outcome === 'won' ? 'Replay mission' : 'Retry mission') : 'Play again'}
-              </button>
+              {!online && (
+                <button
+                  type="button"
+                  className={mission && outcome === 'won' && onNext ? undefined : styles.primary}
+                  onClick={onRestart}
+                >
+                  {mission
+                    ? outcome === 'won'
+                      ? 'Replay mission'
+                      : 'Retry mission'
+                    : 'Play again'}
+                </button>
+              )}
               <button type="button" onClick={onQuit}>
                 Back to setup
               </button>

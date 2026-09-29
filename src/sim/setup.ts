@@ -4,6 +4,7 @@ import { Random } from './random';
 import { BASIC_INFANTRY, type Faction, type UnitType } from './rules';
 import { revealAround } from './shroud';
 import { World, type GameSettings, type StartingUnits } from './world';
+import { datan2, dcos, dsin } from './dmath';
 
 /** Team colours players can pick. */
 export const COLORS = [
@@ -76,7 +77,7 @@ export function createGame(settings: GameSettings): World {
   const middle = { x: map.width / 2, z: map.height / 2 };
   for (const player of players) {
     const { x, z } = player.start;
-    const facing = Math.atan2(middle.z - z, middle.x - x);
+    const facing = datan2(middle.z - z, middle.x - x);
     world.addUnit('basetruck', player.index, x + 0.5, z + 0.5, facing);
     const force = startingForce(player.faction, settings.startingUnits);
     force.forEach((type, i) => {
@@ -85,8 +86,8 @@ export function createGame(settings: GameSettings): World {
       world.addUnit(
         type,
         player.index,
-        x + 0.5 + Math.cos(angle) * distance,
-        z + 0.5 + Math.sin(angle) * distance,
+        x + 0.5 + dcos(angle) * distance,
+        z + 0.5 + dsin(angle) * distance,
         facing,
       );
     });

@@ -4,6 +4,7 @@ import type { Player } from './player';
 import { dockCell } from './production';
 import { GEM_VALUE, MAX_ORE, ORE_VALUE, type UnitType } from './rules';
 import type { World } from './world';
+import { dhypot } from './dmath';
 
 const MINE_EVERY = 0.35;
 const UNLOAD_EVERY = 0.1;
@@ -91,7 +92,7 @@ function nearestRefinery(world: World, unit: Unit): Structure | null {
       continue;
     }
     const spot = dockSpot(structure);
-    let score = Math.hypot(spot.x - unit.x, spot.z - unit.z);
+    let score = dhypot(spot.x - unit.x, spot.z - unit.z);
     if (structure.dock && structure.dock !== unit.id && world.unit(structure.dock)) score += 8;
     if (score < bestScore) {
       bestScore = score;
@@ -134,7 +135,7 @@ export function tickHarvester(world: World, unit: Unit): void {
       const x = map.cellX(unit.oreCell) + 0.5;
       const z = map.cellZ(unit.oreCell) + 0.5;
       const arrived = advance(world, unit);
-      const distance = Math.hypot(unit.x - x, unit.z - z);
+      const distance = dhypot(unit.x - x, unit.z - z);
       if (distance < 0.5) {
         stopMoving(unit);
         unit.step = 'mining';
@@ -151,7 +152,7 @@ export function tickHarvester(world: World, unit: Unit): void {
     case 'mining': {
       const x = map.cellX(unit.oreCell) + 0.5;
       const z = map.cellZ(unit.oreCell) + 0.5;
-      if (Math.hypot(unit.x - x, unit.z - z) > 0.8) {
+      if (dhypot(unit.x - x, unit.z - z) > 0.8) {
         moveTo(world, unit, x, z);
         unit.step = 'toOre';
         return;
@@ -208,7 +209,7 @@ export function tickHarvester(world: World, unit: Unit): void {
         world.emit({ kind: 'warp', from, to: { x: unit.x, y: 0.3, z: unit.z } });
         return;
       }
-      const distance = Math.hypot(unit.x - spot.x, unit.z - spot.z);
+      const distance = dhypot(unit.x - spot.x, unit.z - spot.z);
       if (free) {
         refinery.dock = unit.id;
         if (distance < 0.15) {
@@ -219,7 +220,7 @@ export function tickHarvester(world: World, unit: Unit): void {
           unit.mineTimer = UNLOAD_EVERY;
           return;
         }
-        if (!isMoving(unit) || Math.hypot(unit.destX - spot.x, unit.destZ - spot.z) > 0.1) {
+        if (!isMoving(unit) || dhypot(unit.destX - spot.x, unit.destZ - spot.z) > 0.1) {
           moveTo(world, unit, spot.x, spot.z);
         }
         if (advance(world, unit) && distance > 0.6) moveTo(world, unit, spot.x, spot.z);

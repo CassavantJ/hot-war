@@ -5,12 +5,14 @@ import { MatchScreen } from './components/MatchScreen';
 import { loadSetup, toSettings, type LobbySetup } from './game/lobby';
 import { campaignMissions } from './sim/campaign';
 import type { MissionDef } from './sim/mission';
+import type { OnlineGame } from './game/net';
 import type { GameSettings, World } from './sim/world';
 
 /** A battle to play; `saved` carries on a saved one, the first time round. */
 type Battle =
   | { kind: 'skirmish'; settings: GameSettings; speed: number; round: number; saved?: World }
-  | { kind: 'mission'; mission: MissionDef; speed: number; round: number; saved?: World };
+  | { kind: 'mission'; mission: MissionDef; speed: number; round: number; saved?: World }
+  | { kind: 'online'; online: OnlineGame; speed: number; round: number };
 
 /** The skirmish setup screen, then the battle. */
 export function App() {
@@ -23,6 +25,9 @@ export function App() {
   const play = (mission: MissionDef) => {
     setBattle({ kind: 'mission', mission, speed: setup.speed, round: (battle?.round ?? 0) + 1 });
   };
+  const online = (game: OnlineGame) => {
+    setBattle({ kind: 'online', online: game, speed: 1, round: (battle?.round ?? 0) + 1 });
+  };
   const resume = (world: World) => {
     const round = (battle?.round ?? 0) + 1;
     const mission = world.mission?.def;
@@ -32,6 +37,21 @@ export function App() {
         : { kind: 'skirmish', settings: world.settings, speed: setup.speed, round, saved: world },
     );
   };
+  if (battle?.kind === 'online') {
+    const leave = () => {
+      setBattle(null);
+    };
+    return (
+      <MatchScreen
+        key={battle.round}
+        source={{ online: battle.online }}
+        speed={1}
+        onRestart={leave}
+        onNext={null}
+        onQuit={leave}
+      />
+    );
+  }
   if (battle) {
     const next =
       battle.kind === 'mission'
@@ -85,6 +105,7 @@ export function App() {
       onStart={start}
       onMission={play}
       onLoad={resume}
+      onOnline={online}
     />
   );
 }

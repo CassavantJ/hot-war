@@ -7,6 +7,7 @@ import {
   type UnitDef,
   type UnitType,
 } from './rules';
+import { datan2, dhypot } from './dmath';
 
 /** One simulation step, in seconds. */
 export const DT = 0.05;
@@ -204,10 +205,10 @@ export type Entity = Unit | Structure;
 
 /** Distance from a point to an entity's edge (a unit's centre, or a structure's footprint). */
 export function distanceTo(x: number, z: number, entity: Entity): number {
-  if (entity.entity === 'unit') return Math.hypot(entity.x - x, entity.z - z);
+  if (entity.entity === 'unit') return dhypot(entity.x - x, entity.z - z);
   const dx = Math.max(entity.x - x, 0, x - (entity.x + entity.w));
   const dz = Math.max(entity.z - z, 0, z - (entity.z + entity.h));
-  return Math.hypot(dx, dz);
+  return dhypot(dx, dz);
 }
 
 /** The point of an entity closest to (x, z). */
@@ -220,7 +221,7 @@ export function nearestPoint(x: number, z: number, entity: Entity): { x: number;
 }
 
 export function angleTo(fromX: number, fromZ: number, toX: number, toZ: number): number {
-  return Math.atan2(toZ - fromZ, toX - fromX);
+  return datan2(toZ - fromZ, toX - fromX);
 }
 
 /** The signed difference between two angles, in (-π, π]. */

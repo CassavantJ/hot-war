@@ -248,7 +248,7 @@ export class GameMap {
           const n = this.index(nx, nz);
           if (blocked[n] !== 0) continue;
           if (region !== 0 && this.regionOf(n, mobility) !== region) continue;
-          const distance = (nx + 0.5 - x) ** 2 + (nz + 0.5 - z) ** 2;
+          const distance = (nx + 0.5 - x) * (nx + 0.5 - x) + (nz + 0.5 - z) * (nz + 0.5 - z);
           if (distance < bestDistance) {
             bestDistance = distance;
             best = n;

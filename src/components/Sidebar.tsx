@@ -3,16 +3,7 @@ import { useEffect, useMemo, useRef, useState, type CSSProperties } from 'react'
 
 import type { Match } from '../game/match';
 import type { Player } from '../sim/player';
-import {
-  available,
-  buildList,
-  cancelBuild,
-  costOf,
-  isUnitType,
-  nameOf,
-  queueFor,
-  startBuild,
-} from '../sim/production';
+import { available, buildList, costOf, isUnitType, nameOf, queueFor } from '../sim/production';
 import {
   buildTab,
   STRUCTURES,
@@ -159,8 +150,8 @@ export function Sidebar({ match, onMenu }: { match: Match; onMenu: () => void })
       match.audio.play('click');
       return;
     }
-    if (startBuild(world, player, item.type, shift ? 5 : 1)) match.audio.play('click');
-    else match.audio.play('error');
+    const started = match.issue({ kind: 'build', type: item.type, count: shift ? 5 : 1 });
+    match.audio.play(started === false ? 'error' : 'click');
     match.notify();
   };
 
@@ -252,7 +243,7 @@ export function Sidebar({ match, onMenu }: { match: Match; onMenu: () => void })
                 }}
                 onContextMenu={(event) => {
                   event.preventDefault();
-                  cancelBuild(world, player, item.type);
+                  match.issue({ kind: 'cancel', type: item.type });
                   match.audio.play('click');
                   match.notify();
                 }}

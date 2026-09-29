@@ -4,13 +4,14 @@ import type { Mobility } from './map';
 import { moveTo, stopMoving } from './movement';
 import { mobilityOf } from './rules';
 import type { World } from './world';
+import { dcos, dhypot, dsin } from './dmath';
 
 /** Cell offsets sorted by distance, for spreading a group around a target. */
 const RING: [number, number][] = [];
 for (let dz = -12; dz <= 12; dz++) {
   for (let dx = -12; dx <= 12; dx++) RING.push([dx, dz]);
 }
-RING.sort((a, b) => a[0] ** 2 + a[1] ** 2 - (b[0] ** 2 + b[1] ** 2));
+RING.sort((a, b) => a[0] * a[0] + a[1] * a[1] - (b[0] * b[0] + b[1] * b[1]));
 
 /** Where three infantry stand within one cell. */
 const SQUAD_SPOTS: [number, number][] = [
@@ -35,9 +36,7 @@ function formation(
     if (only) spots.set(only.id, { x, z });
     return spots;
   }
-  const sorted = units
-    .slice()
-    .sort((a, b) => Math.hypot(a.x - x, a.z - z) - Math.hypot(b.x - x, b.z - z));
+  const sorted = units.slice().sort((a, b) => dhypot(a.x - x, a.z - z) - dhypot(b.x - x, b.z - z));
   // Ships, hovercraft and land units each spread over cells they can reach.
   for (const mobility of ['ground', 'naval', 'amphibious'] as const) {
     const group = sorted.filter((unit) => !unit.def.flies && mobilityOf(unit.def) === mobility);
@@ -185,8 +184,8 @@ export function orderScatter(world: World, units: Unit[]): void {
     if (unit.dugIn || unit.def.flies === 'jet') continue;
     const angle = world.rng.range(0, Math.PI * 2);
     const distance = world.rng.range(1.2, 2.2);
-    const x = unit.x + Math.cos(angle) * distance;
-    const z = unit.z + Math.sin(angle) * distance;
+    const x = unit.x + dcos(angle) * distance;
+    const z = unit.z + dsin(angle) * distance;
     unit.order = { kind: 'move', x, z, attack: false };
     moveTo(world, unit, x, z);
   }
