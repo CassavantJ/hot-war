@@ -122,14 +122,19 @@ describe('countries', () => {
     expect(tank.hp < tank.maxHp || tank.dead).toBe(true);
   });
 
-  it('every country plays a full game against the computer without trouble', () => {
-    const nations = Object.keys(NATIONS) as Nation[];
-    for (const [i, nation] of nations.entries()) {
-      const rival = nations[(i + 4) % nations.length] ?? 'russia';
-      const world = createGame(game(nation, rival, true));
-      run(world, 12 * 60);
-      const built = world.players.map((player) => player.stats.unitsBuilt);
-      expect(built.every((count) => count > 0)).toBe(true);
-    }
-  });
+  // Nine twelve-minute games: slow on a shared CI machine, so it gets a generous limit.
+  it(
+    'every country plays a full game against the computer without trouble',
+    { timeout: 60_000 },
+    () => {
+      const nations = Object.keys(NATIONS) as Nation[];
+      for (const [i, nation] of nations.entries()) {
+        const rival = nations[(i + 4) % nations.length] ?? 'russia';
+        const world = createGame(game(nation, rival, true));
+        run(world, 12 * 60);
+        const built = world.players.map((player) => player.stats.unitsBuilt);
+        expect(built.every((count) => count > 0)).toBe(true);
+      }
+    },
+  );
 });

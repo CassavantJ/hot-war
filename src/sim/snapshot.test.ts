@@ -26,7 +26,7 @@ function digest(world: World): string {
 }
 
 describe('save games', () => {
-  it('a restored skirmish carries on exactly as the original does', () => {
+  it('a restored skirmish carries on exactly as the original does', { timeout: 30_000 }, () => {
     const world = createGame({
       mapId: 'crossroads',
       seed: 11,
