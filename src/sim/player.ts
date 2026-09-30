@@ -1,5 +1,13 @@
 import type { Cell } from './map';
-import type { Faction, Role, StructureType, UnitType } from './rules';
+import {
+  DEFAULT_NATION,
+  NATIONS,
+  type Faction,
+  type Nation,
+  type Role,
+  type StructureType,
+  type UnitType,
+} from './rules';
 
 export type QueueKind = 'building' | 'defense' | 'infantry' | 'vehicle' | 'aircraft' | 'naval';
 export type Difficulty = 'easy' | 'normal' | 'hard';
@@ -33,6 +41,8 @@ export class Player {
   readonly index: number;
   readonly name: string;
   readonly faction: Faction;
+  /** The country played, which decides this player's special unit, building or power. */
+  readonly nation: Nation;
   readonly color: string;
   /** Players on the same non-zero team are allies. */
   readonly team: number;
@@ -72,6 +82,7 @@ export class Player {
     index: number;
     name: string;
     faction: Faction;
+    nation?: Nation;
     color: string;
     team: number;
     ai: Difficulty | null;
@@ -82,6 +93,11 @@ export class Player {
     this.index = options.index;
     this.name = options.name;
     this.faction = options.faction;
+    const nation = options.nation;
+    this.nation =
+      nation && NATIONS[nation].faction === options.faction
+        ? nation
+        : DEFAULT_NATION[options.faction];
     this.color = options.color;
     this.team = options.team;
     this.ai = options.ai;

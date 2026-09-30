@@ -13,7 +13,7 @@ import {
   type UnitType,
 } from '../sim/rules';
 import { SUPERWEAPONS } from '../sim/rules';
-import { superweaponsOf } from '../sim/superweapons';
+import { powerOf, superweaponsOf } from '../sim/superweapons';
 import { renderIcons } from '../view/icons';
 import styles from './Match.module.css';
 import { Radar } from './Radar';
@@ -291,7 +291,7 @@ function Superweapons({ match, icons }: { match: Match; icons: Map<string, strin
   return (
     <div className={styles.supers}>
       {owned.map((structure) => {
-        const id = structure.def.superweapon;
+        const id = powerOf(world, structure);
         if (!id) return null;
         const def = SUPERWEAPONS[id];
         const ready = structure.superCharge >= 1 && structure.working;

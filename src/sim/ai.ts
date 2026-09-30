@@ -1,6 +1,6 @@
 import { HARVESTER } from './economy';
 import { DT, type Structure, type Unit } from './entities';
-import { orderAttack, orderEnter, orderHarvest, orderMove } from './orders';
+import { orderAttack, orderDeploy, orderEnter, orderHarvest, orderMove } from './orders';
 import type { Player } from './player';
 import {
   available,
@@ -11,7 +11,7 @@ import {
   toggleRepair,
 } from './production';
 import { Random } from './random';
-import { fireSuperweapon, isReady } from './superweapons';
+import { fireSuperweapon, isReady, powerOf } from './superweapons';
 import {
   STRUCTURES,
   SUPERWEAPONS,
@@ -20,6 +20,7 @@ import {
   type Role,
   type StructureType,
   type UnitType,
+  structureAvailableTo,
 } from './rules';
 import type { World } from './world';
 import { datan2, dcos, dhypot, dsin } from './dmath';
@@ -124,12 +125,15 @@ const INFANTRY_MIX: Record<Faction, [UnitType, number][]> = {
     ['hound', 0.5],
     ['skyjumper', 1],
     ['commando', 0.6],
+    ['marksman', 0.6],
   ],
   bloc: [
     ['draftee', 5],
     ['flakgunner', 1.5],
     ['hound', 0.5],
     ['torch', 3],
+    ['sapper', 1],
+    ['mortar', 1.5],
   ],
 };
 
@@ -138,6 +142,7 @@ const VEHICLE_MIX: Record<Faction, [UnitType, number][]> = {
     ['lancer', 5],
     ['striker', 1.5],
     ['beamtank', 3],
+    ['tankhunter', 2.5],
   ],
   bloc: [
     ['bear', 5],
@@ -145,12 +150,23 @@ const VEHICLE_MIX: Record<Faction, [UnitType, number][]> = {
     ['rockettruck', 1.4],
     ['behemoth', 3],
     ['dirigible', 0.5],
+    ['arctank', 2.5],
+    ['minelayer', 0.5],
   ],
 };
 
 /** Defences in the order they're built; the AI waits for each one to be unlocked. */
 const DEFENSES: Record<Faction, StructureType[]> = {
-  accord: ['a_pillbox', 'a_beamtower', 'a_sam', 'a_beamtower', 'a_pillbox', 'a_beamtower', 'a_sam'],
+  accord: [
+    'a_pillbox',
+    'a_beamtower',
+    'a_sam',
+    'a_fortress',
+    'a_beamtower',
+    'a_pillbox',
+    'a_beamtower',
+    'a_sam',
+  ],
   bloc: ['b_nest', 'b_bastion', 'b_flak', 'b_bastion', 'b_nest', 'b_bastion', 'b_flak'],
 };
 
@@ -224,6 +240,7 @@ export class AiBrain {
     if (hq) this.repairBase();
     this.manageUnits(hq);
     if (this.attacks) this.manageFleet();
+    this.layMines(hq);
     this.useSuperweapons();
   }
 
@@ -332,7 +349,10 @@ export class AiBrain {
     this.defenseCount = this.roleCount('defense');
     const limit = this.tuning.defenses + Math.floor(this.minutes / 10);
     if (this.defenseCount >= limit) return;
-    const options = DEFENSES[player.faction];
+    // Only what this country can build (France alone has the Fortress Gun).
+    const options = DEFENSES[player.faction].filter((type) =>
+      structureAvailableTo(STRUCTURES[type], player),
+    );
     const type = options[this.defenseCount % options.length];
     if (type && available(this.world, player, type)) startBuild(this.world, player, type);
   }
@@ -408,8 +428,9 @@ export class AiBrain {
       player.ai !== 'easy' &&
       player.queues.aircraft.items.length === 0
     ) {
-      if (available(world, player, 'falcon') && player.credits > reserve + 1500) {
-        startBuild(world, player, 'falcon');
+      const jet = player.nation === 'korea' ? 'kestrel' : 'falcon';
+      if (available(world, player, jet) && player.credits > reserve + 1500) {
+        startBuild(world, player, jet);
       }
     }
   }
@@ -431,6 +452,13 @@ export class AiBrain {
       if (
         type === 'dirigible' &&
         (player.ai !== 'hard' || units.filter((u) => u.type === type).length >= 2)
+      ) {
+        return false;
+      }
+      // A couple of minelayers is plenty, once there's an army to spare the money.
+      if (
+        type === 'minelayer' &&
+        (this.minutes < 3 || units.filter((u) => u.type === type).length >= 2)
       ) {
         return false;
       }
@@ -855,9 +883,19 @@ export class AiBrain {
     const world = this.world;
     const enemy = world.players[this.enemy];
     for (const structure of this.own(world.structures)) {
-      if (!isReady(structure)) continue;
-      const kind = structure.def.superweapon;
-      if (kind === 'storm' || kind === 'missile') {
+      if (!isReady(world, structure)) continue;
+      const kind = powerOf(world, structure);
+      if (kind === 'airdrop') {
+        // Paratroopers join an attack under way, or land by an enemy building we've seen.
+        const lead = this.own(world.units).find((unit) => this.attackers.has(unit.id));
+        const hq = this.hq();
+        const target = lead
+          ? { x: lead.x + 1, z: lead.z + 1 }
+          : enemy && hq
+            ? this.targetNear(enemy, hq.cx, hq.cz)
+            : null;
+        if (target) fireSuperweapon(world, structure, { x: target.x, z: target.z });
+      } else if (kind === 'storm' || kind === 'missile') {
         if (!enemy) continue;
         const target = this.densest(enemy.index, SUPERWEAPONS[kind].radius);
         if (target) fireSuperweapon(world, structure, target);
@@ -893,6 +931,28 @@ export class AiBrain {
           orderMove(world, group, target.x, target.z, true);
         }
       }
+    }
+  }
+
+  /** Minelayers seed the ground between the base and the enemy, a mine at a time. */
+  private layMines(hq: Structure | null): void {
+    if (!hq) return;
+    const world = this.world;
+    const enemy = world.players[this.enemy];
+    for (const unit of this.own(world.units)) {
+      if (!unit.def.minelayer || unit.order.kind !== 'idle' || unit.pathPending) continue;
+      const away = dhypot(unit.x - hq.cx, unit.z - hq.cz);
+      const mined = world.mines.some(
+        (mine) => Math.abs(mine.x - unit.x) < 1.2 && Math.abs(mine.z - unit.z) < 1.2,
+      );
+      if (away > 5 && !mined) {
+        orderDeploy([unit]);
+        continue;
+      }
+      const toward = enemy ? datan2(enemy.start.z - hq.cz, enemy.start.x - hq.cx) : 0;
+      const angle = toward + this.rng.range(-0.9, 0.9);
+      const distance = this.rng.range(7, 13);
+      orderMove(world, [unit], hq.cx + dcos(angle) * distance, hq.cz + dsin(angle) * distance);
     }
   }
 

@@ -170,7 +170,12 @@ export function orderGuard(units: Unit[]): void {
 
 export function orderDeploy(units: Unit[]): void {
   for (const unit of units) {
-    if (unit.def.deploysToHq || unit.def.dugInWeapon || unit.passengers.length > 0) {
+    if (
+      unit.def.deploysToHq ||
+      unit.def.dugInWeapon ||
+      unit.def.minelayer ||
+      unit.passengers.length > 0
+    ) {
       unit.order = { kind: 'deploy' };
       unit.target = 0;
       stopMoving(unit);

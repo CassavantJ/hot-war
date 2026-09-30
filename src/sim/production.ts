@@ -91,7 +91,7 @@ export function available(world: World, player: Player, type: UnitType | Structu
   if (tech && player.index === world.local && !tech.includes(type)) return false;
   if (isUnitType(type)) {
     const def = UNITS[type];
-    if (!unitAvailableTo(def, player.faction) || !prereqsMet(player, def.prereqs)) return false;
+    if (!unitAvailableTo(def, player) || !prereqsMet(player, def.prereqs)) return false;
     if (def.unique) {
       const alive = world.units.some((unit) => unit.owner === player.index && unit.type === type);
       if (alive || queuedCount(player, type) > 0) return false;
@@ -110,16 +110,16 @@ export function available(world: World, player: Player, type: UnitType | Structu
   }
   const def = STRUCTURES[type];
   if (def.superweapon && world.settings.superweapons === false) return false;
-  return structureAvailableTo(def, player.faction) && prereqsMet(player, def.prereqs);
+  return structureAvailableTo(def, player) && prereqsMet(player, def.prereqs);
 }
 
 /** Everything a player's faction could ever build, in sidebar order. */
 export function buildList(player: Player): (UnitType | StructureType)[] {
   const structures = Object.values(STRUCTURES)
-    .filter((def) => structureAvailableTo(def, player.faction))
+    .filter((def) => structureAvailableTo(def, player))
     .map((def) => def.id);
   const units = Object.values(UNITS)
-    .filter((def) => unitAvailableTo(def, player.faction))
+    .filter((def) => unitAvailableTo(def, player))
     .map((def) => def.id);
   return [...structures, ...units];
 }

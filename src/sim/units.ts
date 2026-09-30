@@ -26,6 +26,7 @@ import { placementCheck } from './production';
 import { HQ, WEAPONS, type WeaponDef } from './rules';
 import type { World } from './world';
 import { dcos, dhypot, dsin } from './dmath';
+import { layMine } from './mines';
 
 const TURRET_TURN = 5;
 const SCAN_EVERY = 0.4;
@@ -536,6 +537,11 @@ function deploy(world: World, unit: Unit): void {
     hq.hp = hq.maxHp * (unit.hp / unit.maxHp);
     world.emit({ kind: 'placed', id: hq.id });
     world.emit({ kind: 'sound', sound: 'deploy', x: unit.x, z: unit.z });
+    return;
+  }
+  if (def.minelayer) {
+    layMine(world, unit);
+    finish(unit);
     return;
   }
   if (def.dugInWeapon) {

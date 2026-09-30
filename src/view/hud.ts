@@ -2,6 +2,7 @@ import type { Controller } from '../game/controller';
 import { SUPERWEAPONS } from '../sim/rules';
 import type { Structure, Unit } from '../sim/entities';
 import type { GameView } from './GameView';
+import { powerOf } from '../sim/superweapons';
 
 function healthColor(fraction: number): string {
   if (fraction > 0.5) return '#3ee05a';
@@ -204,7 +205,8 @@ export function drawHud(
   // A superweapon's area, while aiming it.
   const mode = controller.mode;
   if (mode.kind === 'superweapon') {
-    const weapon = world.structure(mode.id)?.def.superweapon;
+    const structure = world.structure(mode.id);
+    const weapon = structure ? powerOf(world, structure) : undefined;
     if (weapon) {
       const radius = SUPERWEAPONS[weapon].radius;
       const circle = (x: number, z: number, color: string) => {

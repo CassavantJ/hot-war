@@ -38,6 +38,8 @@ interface Member {
   seat: number;
   name: string;
   faction: string;
+  /** A country id, or 'random'; the game checks it. */
+  nation: string;
   color: string;
   /** The last turn this player sent orders for. */
   lastTurn: number;
@@ -50,7 +52,7 @@ interface RoomState {
 
 type Incoming =
   | { t: 'hello'; name: string }
-  | { t: 'seat'; faction: string; color: string }
+  | { t: 'seat'; faction: string; nation?: string; color: string }
   | { t: 'setup'; setup: unknown }
   | { t: 'start' }
   | { t: 'turn'; turn: number; commands: unknown; hash?: number; hashTurn?: number };
@@ -120,6 +122,7 @@ export class Room extends DurableObject<Env> {
           seat: member.seat,
           name: member.name,
           faction: member.faction,
+          nation: member.nation,
           color: member.color,
         })),
       },
@@ -149,6 +152,7 @@ export class Room extends DurableObject<Env> {
       seat,
       name: `Player ${String(seat + 1)}`,
       faction: FACTIONS[seat % 2] ?? 'accord',
+      nation: seat % 2 === 0 ? 'america' : 'russia',
       color: COLORS.find((color) => !usedColors.has(color)) ?? COLORS[0] ?? '#2f74e0',
       lastTurn: -1,
     };
@@ -184,6 +188,9 @@ export class Room extends DurableObject<Env> {
       case 'seat': {
         if (state.started) return;
         if (FACTIONS.includes(message.faction)) member.faction = message.faction;
+        if (typeof message.nation === 'string' && /^[a-z]{2,12}$/.test(message.nation)) {
+          member.nation = message.nation;
+        }
         const clash = this.members(socket).some(([, other]) => other.color === message.color);
         if (COLORS.includes(message.color) && !clash) member.color = message.color;
         socket.serializeAttachment(member);
@@ -210,6 +217,7 @@ export class Room extends DurableObject<Env> {
             seat: other.seat,
             name: other.name,
             faction: other.faction,
+            nation: other.nation,
             color: other.color,
           })),
         });

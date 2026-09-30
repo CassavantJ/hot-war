@@ -3,7 +3,7 @@ import { GameMap } from './map';
 import { buildMap, type MapSpec } from './maps';
 import { orderMove } from './orders';
 import { Player, type Difficulty } from './player';
-import { STRUCTURES, type Faction, type StructureType, type UnitType } from './rules';
+import { STRUCTURES, type Faction, type Nation, type StructureType, type UnitType } from './rules';
 import { revealAround } from './shroud';
 import { World } from './world';
 import { dcos, dhypot, dsin } from './dmath';
@@ -33,6 +33,7 @@ export type MissionEvent =
 export interface MissionSide {
   name: string;
   faction: Faction;
+  nation?: Nation;
   color: string;
   team: number;
   /** For computer players: how clever, and whether they build and attack. */
@@ -93,6 +94,7 @@ export function createMission(def: MissionDef, seed = 1): World {
         index,
         name: side.name,
         faction: side.faction,
+        ...(side.nation ? { nation: side.nation } : {}),
         color: side.color,
         team: side.team,
         ai: side.ai,

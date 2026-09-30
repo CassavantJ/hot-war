@@ -4,7 +4,7 @@ import { Audio } from '../game/audio';
 import { Match, SPEEDS } from '../game/match';
 import { saveProgress } from '../sim/campaign';
 import type { MissionDef } from '../sim/mission';
-import { FACTIONS } from '../sim/rules';
+import { FACTIONS, NATIONS } from '../sim/rules';
 import type { OnlineGame } from '../game/net';
 import type { GameSettings, World } from '../sim/world';
 import { Briefing } from './Campaign';
@@ -349,7 +349,9 @@ export function MatchScreen({ source, speed, onRestart, onNext, onQuit: quitToSe
                     <th scope="row">
                       <span className={styles.statSwatch} style={{ background: player.color }} />
                       {player.name}
-                      <small>{FACTIONS[player.faction].name}</small>
+                      <small>
+                        {NATIONS[player.nation].name}, {FACTIONS[player.faction].name}
+                      </small>
                     </th>
                     <td>{player.stats.unitsBuilt}</td>
                     <td>{player.stats.unitsKilled}</td>

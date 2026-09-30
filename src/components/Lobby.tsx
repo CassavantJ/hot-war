@@ -12,12 +12,13 @@ import { SPEEDS } from '../game/match';
 import { MAPS, mapSpec } from '../sim/maps';
 import type { MissionDef } from '../sim/mission';
 import type { Difficulty } from '../sim/player';
-import { FACTIONS, type Faction } from '../sim/rules';
+import { NATIONS, type Faction } from '../sim/rules';
 import { COLORS } from '../sim/setup';
 import type { StartingUnits } from '../sim/world';
 import type { OnlineGame } from '../game/net';
 import type { World } from '../sim/world';
 import { Campaign } from './Campaign';
+import { CountryNote, CountrySelect } from './CountrySelect';
 import { MapPreview } from './MapPreview';
 import { Help } from './Help';
 import styles from './Lobby.module.css';
@@ -80,7 +81,10 @@ export function Lobby({
   const addOpponent = () => {
     const color = COLORS.find((option) => !usedColors.has(option.value))?.value ?? COLORS[0].value;
     const faction: Faction = setup.seats.length % 2 === 0 ? 'accord' : 'bloc';
-    update({ ...setup, seats: [...setup.seats, { faction, color, team: 0, ai: 'normal' }] });
+    update({
+      ...setup,
+      seats: [...setup.seats, { faction, nation: 'random', color, team: 0, ai: 'normal' }],
+    });
   };
   const ready = hasOpponent(setup);
   return (
@@ -169,21 +173,17 @@ export function Lobby({
                       </select>
                     </label>
                   )}
-                  <label className={styles.field}>
-                    <span className="sr-only">Faction</span>
-                    <select
-                      value={current.faction}
-                      onChange={(event) => {
-                        seat(index, { faction: event.target.value as Faction });
-                      }}
-                    >
-                      {(Object.keys(FACTIONS) as Faction[]).map((faction) => (
-                        <option key={faction} value={faction}>
-                          {FACTIONS[faction].name}
-                        </option>
-                      ))}
-                    </select>
-                  </label>
+                  <CountrySelect
+                    value={current.nation}
+                    onChange={(nation) => {
+                      seat(
+                        index,
+                        nation === 'random'
+                          ? { nation }
+                          : { nation, faction: NATIONS[nation].faction },
+                      );
+                    }}
+                  />
                   <label className={styles.field}>
                     <span className="sr-only">Colour</span>
                     <select
@@ -241,10 +241,7 @@ export function Lobby({
                 + Add a computer player
               </button>
             )}
-            <p className={styles.factionNote}>
-              <strong>{FACTIONS[setup.seats[0]?.faction ?? 'accord'].name}:</strong>{' '}
-              {FACTIONS[setup.seats[0]?.faction ?? 'accord'].blurb}
-            </p>
+            <CountryNote value={setup.seats[0]?.nation ?? 'america'} />
             <h2 className={styles.heading}>Options</h2>
             <div className={styles.options}>
               <label className={styles.option}>

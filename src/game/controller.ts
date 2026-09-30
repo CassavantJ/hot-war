@@ -2,7 +2,7 @@ import { applyCommand, type Command } from '../sim/commands';
 import type { Entity, Structure, Unit } from '../sim/entities';
 import { placementCheck, type PlacementCheck } from '../sim/production';
 import { mobilityOf, STRUCTURES, SUPERWEAPONS, WEAPONS, type StructureType } from '../sim/rules';
-import { isReady } from '../sim/superweapons';
+import { isReady, powerOf } from '../sim/superweapons';
 import { seatCost, seatsFree } from '../sim/units';
 import type { World } from '../sim/world';
 import type { GameView } from '../view/GameView';
@@ -423,6 +423,7 @@ export class Controller {
         const deployable =
           target.def.deploysToHq === true ||
           target.def.dugInWeapon !== undefined ||
+          target.def.minelayer === true ||
           target.passengers.length > 0;
         if (this.selection.has(target.id) && deployable) return 'deploy';
         // Climb aboard a transport with room.
@@ -638,7 +639,7 @@ export class Controller {
   /** Starts aiming one of your superweapons. */
   startSuperweapon(id: number): void {
     const structure = this.world.structure(id);
-    if (!structure || !isReady(structure)) {
+    if (!structure || !isReady(this.world, structure)) {
       this.onCue('error');
       return;
     }
@@ -649,11 +650,12 @@ export class Controller {
     const structure = this.world.structure(id);
     const { x, y } = this.pointer;
     const spot = this.view.screenToWorld(x, y);
-    if (!structure?.def.superweapon) {
+    const power = structure ? powerOf(this.world, structure) : undefined;
+    if (!structure || !power) {
       this.setMode({ kind: 'normal' });
       return;
     }
-    if (structure.def.superweapon === 'phase' && !from) {
+    if (power === 'phase' && !from) {
       const radius = SUPERWEAPONS.phase.radius;
       const hasUnits = this.world
         .unitsNear(spot.x, spot.z, radius)

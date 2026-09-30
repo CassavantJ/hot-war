@@ -1,9 +1,10 @@
 import { MAPS } from '../sim/maps';
-import { FACTIONS, type Faction } from '../sim/rules';
+import { Random } from '../sim/random';
+import { FACTIONS, isNation, NATIONS, type Faction } from '../sim/rules';
 import { COLORS } from '../sim/setup';
 import type { GameSettings, StartingUnits } from '../sim/world';
 import type { Bundle } from './lockstep';
-import { CREDIT_OPTIONS } from './lobby';
+import { CREDIT_OPTIONS, resolveNation, type NationChoice } from './lobby';
 
 /**
  * The connection to the multiplayer relay: a WebSocket to a room, named by a five-letter
@@ -53,6 +54,7 @@ export interface Member {
   seat: number;
   name: string;
   faction: Faction;
+  nation: NationChoice;
   color: string;
 }
 
@@ -104,6 +106,7 @@ function readMembers(value: unknown): Member[] {
       seat: typeof item.seat === 'number' ? item.seat : -1,
       name: typeof item.name === 'string' ? item.name.slice(0, 16) : 'Player',
       faction: item.faction === 'bloc' ? ('bloc' as const) : ('accord' as const),
+      nation: isNation(item.nation) ? item.nation : ('random' as const),
       color: COLORS.some((color) => color.value === item.color)
         ? String(item.color)
         : COLORS[0].value,
@@ -267,21 +270,28 @@ export class Net {
   private game(message: StartMessage): OnlineGame {
     const setup = readSetup(message.setup);
     const members = readMembers(message.members);
+    const seed = typeof message.seed === 'number' ? message.seed : 1;
     const settings: GameSettings = {
       mapId: setup.mapId,
-      seed: typeof message.seed === 'number' ? message.seed : 1,
+      seed,
       credits: setup.credits,
       startingUnits: setup.startingUnits,
       shortGame: setup.shortGame,
       crates: setup.crates,
       superweapons: setup.superweapons,
-      players: members.map((member) => ({
-        name: member.name,
-        faction: member.faction,
-        color: member.color,
-        team: 0,
-        ai: null,
-      })),
+      players: members.map((member) => {
+        // Random countries come from the battle's seed, so every screen picks the same.
+        const random = new Random(seed * 31 + member.seat * 7919 + 1);
+        const nation = resolveNation(member.nation, () => random.next());
+        return {
+          name: member.name,
+          faction: NATIONS[nation].faction,
+          nation,
+          color: member.color,
+          team: 0,
+          ai: null,
+        };
+      }),
     };
     return {
       net: this,
@@ -299,8 +309,9 @@ export class Net {
     this.send({ t: 'hello', name });
   }
 
-  setSeat(faction: Faction, color: string): void {
-    if (faction in FACTIONS) this.send({ t: 'seat', faction, color });
+  setSeat(nation: NationChoice, color: string): void {
+    const faction: Faction = nation === 'random' ? 'accord' : NATIONS[nation].faction;
+    if (faction in FACTIONS) this.send({ t: 'seat', faction, nation, color });
   }
 
   setSetup(setup: OnlineSetup): void {

@@ -64,6 +64,7 @@ export function createGame(settings: GameSettings): World {
         index,
         name: setup.name,
         faction: setup.faction,
+        ...(setup.nation ? { nation: setup.nation } : {}),
         color: setup.color,
         team: setup.team,
         ai: setup.ai,

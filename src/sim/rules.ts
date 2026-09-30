@@ -19,6 +19,88 @@ export const FACTIONS: Record<Faction, { name: string; blurb: string; color: str
   },
 };
 
+/**
+ * The countries: each side's players pick one, and each has one thing no other country gets.
+ */
+export type Nation =
+  'america' | 'korea' | 'france' | 'germany' | 'britain' | 'cuba' | 'iraq' | 'libya' | 'russia';
+
+export interface NationDef {
+  name: string;
+  faction: Faction;
+  /** What's special about it: a unit, a building or a support power. */
+  special: string;
+  blurb: string;
+}
+
+export const NATIONS: Record<Nation, NationDef> = {
+  america: {
+    name: 'America',
+    faction: 'accord',
+    special: 'Airborne Drop',
+    blurb: 'The Air Command can drop a squad of Riflemen anywhere you’ve scouted.',
+  },
+  korea: {
+    name: 'Korea',
+    faction: 'accord',
+    special: 'Kestrel',
+    blurb: 'Kestrel strike jets: tougher than the Falcon, with three heavier missiles.',
+  },
+  france: {
+    name: 'France',
+    faction: 'accord',
+    special: 'Fortress Gun',
+    blurb: 'A huge long-range gun emplacement to anchor your defences.',
+  },
+  germany: {
+    name: 'Germany',
+    faction: 'accord',
+    special: 'Tank Hunter',
+    blurb: 'A low tank destroyer whose gun cracks heavy armour (and not much else).',
+  },
+  britain: {
+    name: 'Great Britain',
+    faction: 'accord',
+    special: 'Marksman',
+    blurb: 'A long-range marksman who drops infantry with a single shot.',
+  },
+  cuba: {
+    name: 'Cuba',
+    faction: 'bloc',
+    special: 'Sapper',
+    blurb: 'Quick demolition troops who lob satchel charges at tanks and buildings.',
+  },
+  iraq: {
+    name: 'Iraq',
+    faction: 'bloc',
+    special: 'Mortar Team',
+    blurb: 'Infantry mortars that shell the enemy from well out of reach.',
+  },
+  libya: {
+    name: 'Libya',
+    faction: 'bloc',
+    special: 'Minelayer',
+    blurb: 'Seeds hidden anti-tank mines. Deploy it to drop one where it stands.',
+  },
+  russia: {
+    name: 'Russia',
+    faction: 'bloc',
+    special: 'Arc Tank',
+    blurb: 'A heavy tank whose electric arc leaps from one target to the next.',
+  },
+};
+
+/** The country a player gets if none is picked (and in the campaigns). */
+export const DEFAULT_NATION: Record<Faction, Nation> = { accord: 'america', bloc: 'russia' };
+
+export function nationsOf(faction: Faction): Nation[] {
+  return (Object.keys(NATIONS) as Nation[]).filter((id) => NATIONS[id].faction === faction);
+}
+
+export function isNation(value: unknown): value is Nation {
+  return typeof value === 'string' && value in NATIONS;
+}
+
 export type Armor =
   'infantry' | 'light' | 'medium' | 'heavy' | 'aircraft' | 'building' | 'wall' | 'ship';
 
@@ -453,6 +535,74 @@ const WEAPON_LIST = {
     projectile: 'instant',
     sound: 'mg',
   },
+  // Country specials.
+  marksmanRifle: {
+    damage: 150,
+    cooldown: 2.2,
+    range: 8,
+    warhead: 'sniper',
+    projectile: 'instant',
+    sound: 'pistol',
+  },
+  hunterGun: {
+    damage: 125,
+    cooldown: 2.4,
+    range: 5.75,
+    speed: 18,
+    warhead: 'ap',
+    projectile: 'shell',
+    sound: 'bigcannon',
+  },
+  fortressGun: {
+    damage: 230,
+    cooldown: 5.5,
+    range: 14,
+    minRange: 3,
+    speed: 8,
+    splash: 1.3,
+    warhead: 'he',
+    projectile: 'artillery',
+    sound: 'bigcannon',
+  },
+  kestrelMissiles: {
+    damage: 140,
+    cooldown: 0.3,
+    range: 5.5,
+    speed: 16,
+    warhead: 'missile',
+    projectile: 'missile',
+    sound: 'missile',
+  },
+  satchel: {
+    damage: 380,
+    cooldown: 4.5,
+    range: 2,
+    speed: 3,
+    splash: 0.9,
+    warhead: 'he',
+    projectile: 'artillery',
+    sound: 'cannon',
+  },
+  mortar: {
+    damage: 70,
+    cooldown: 3.5,
+    range: 9,
+    minRange: 2.5,
+    speed: 6,
+    splash: 1.1,
+    warhead: 'he',
+    projectile: 'artillery',
+    sound: 'cannon',
+  },
+  arcCoil: {
+    damage: 85,
+    cooldown: 1.7,
+    range: 4.75,
+    split: 2,
+    warhead: 'shock',
+    projectile: 'beam',
+    sound: 'beam',
+  },
 } satisfies Record<string, WeaponDef>;
 
 export type WeaponId = keyof typeof WEAPON_LIST;
@@ -510,7 +660,14 @@ export type UnitType =
   | 'sub'
   | 'flakboat'
   | 'missileship'
-  | 'hovercraft';
+  | 'hovercraft'
+  | 'marksman'
+  | 'kestrel'
+  | 'tankhunter'
+  | 'sapper'
+  | 'mortar'
+  | 'minelayer'
+  | 'arctank';
 
 export interface UnitDef {
   id: UnitType;
@@ -559,6 +716,10 @@ export interface UnitDef {
   submarine?: boolean;
   /** Carries passengers: infantry take one slot, vehicles four (if allowed). */
   transport?: { slots: number; vehicles?: boolean };
+  /** Only this country can build it. */
+  nation?: Nation;
+  /** Lays a mine when deployed. */
+  minelayer?: boolean;
 }
 
 const INFANTRY = { kind: 'infantry', armor: 'infantry', radius: 0.18, turn: 20 } as const;
@@ -1040,6 +1201,130 @@ export const UNITS: Record<UnitType, UnitDef> = {
     amphibious: true,
     transport: { slots: 8, vehicles: true },
   },
+  marksman: {
+    id: 'marksman',
+    name: 'Marksman',
+    blurb: 'Long-range rifleman who drops infantry with one shot. Useless against armour.',
+    faction: 'accord',
+    ...INFANTRY,
+    cost: 600,
+    hp: 125,
+    speed: 1.25,
+    sight: 9,
+    weapons: ['marksmanRifle'],
+    prereqs: ['barracks', 'radar'],
+    from: 'barracks',
+    crushable: true,
+    canGarrison: true,
+    nation: 'britain',
+  },
+  kestrel: {
+    id: 'kestrel',
+    name: 'Kestrel Jet',
+    blurb: 'Heavy strike jet: three big missiles and a tougher airframe than the Falcon.',
+    faction: 'accord',
+    kind: 'aircraft',
+    cost: 1500,
+    hp: 240,
+    armor: 'aircraft',
+    speed: 7.5,
+    sight: 7,
+    radius: 0.45,
+    turn: 4.2,
+    weapons: ['kestrelMissiles'],
+    prereqs: ['radar'],
+    from: 'radar',
+    flies: 'jet',
+    altitude: 2.6,
+    ammo: 3,
+    nation: 'korea',
+  },
+  tankhunter: {
+    id: 'tankhunter',
+    name: 'Tank Hunter',
+    blurb: 'Low tank destroyer with a long gun: murder on armour, poor against infantry.',
+    faction: 'accord',
+    ...TANK,
+    cost: 1000,
+    hp: 360,
+    armor: 'heavy',
+    speed: 1.9,
+    sight: 6,
+    turn: 2.2,
+    weapons: ['hunterGun'],
+    prereqs: ['factory'],
+    from: 'factory',
+    nation: 'germany',
+  },
+  sapper: {
+    id: 'sapper',
+    name: 'Sapper',
+    blurb: 'Fast demolition trooper who lobs satchel charges at tanks and buildings up close.',
+    faction: 'bloc',
+    ...INFANTRY,
+    cost: 400,
+    hp: 160,
+    speed: 1.85,
+    sight: 5,
+    weapons: ['satchel'],
+    prereqs: ['barracks'],
+    from: 'barracks',
+    crushable: true,
+    nation: 'cuba',
+  },
+  mortar: {
+    id: 'mortar',
+    name: 'Mortar Team',
+    blurb: 'Infantry mortar: shells enemies from far out of reach, but can’t fire up close.',
+    faction: 'bloc',
+    ...INFANTRY,
+    cost: 500,
+    hp: 110,
+    speed: 1.1,
+    sight: 6,
+    weapons: ['mortar'],
+    prereqs: ['barracks', 'radar'],
+    from: 'barracks',
+    crushable: true,
+    nation: 'iraq',
+  },
+  minelayer: {
+    id: 'minelayer',
+    name: 'Minelayer',
+    blurb: 'Lays hidden anti-tank mines. Deploy it to drop one where it stands.',
+    faction: 'bloc',
+    ...TANK,
+    crusher: false,
+    cost: 600,
+    hp: 320,
+    armor: 'medium',
+    speed: 1.9,
+    sight: 6,
+    turn: 2.6,
+    weapons: [],
+    prereqs: ['factory'],
+    from: 'factory',
+    minelayer: true,
+    nation: 'libya',
+  },
+  arctank: {
+    id: 'arctank',
+    name: 'Arc Tank',
+    blurb: 'Heavy tank with an electric arc that jumps from one target to the next.',
+    faction: 'bloc',
+    ...TANK,
+    cost: 1300,
+    hp: 480,
+    armor: 'heavy',
+    speed: 1.6,
+    sight: 6,
+    turn: 2.4,
+    weapons: ['arcCoil'],
+    turret: true,
+    prereqs: ['factory', 'radar'],
+    from: 'factory',
+    nation: 'russia',
+  },
 };
 
 export type StructureType =
@@ -1073,6 +1358,7 @@ export type StructureType =
   | 'a_gate'
   | 'b_silo'
   | 'b_bulwark'
+  | 'a_fortress'
   | 'c_house'
   | 'c_flats'
   | 'c_store'
@@ -1115,9 +1401,11 @@ export interface StructureDef {
   /** Built on water (shipyards). */
   onWater?: boolean;
   superweapon?: SuperweaponId;
+  /** Only this country can build it. */
+  nation?: Nation;
 }
 
-export type SuperweaponId = 'storm' | 'phase' | 'missile' | 'shield';
+export type SuperweaponId = 'storm' | 'phase' | 'missile' | 'shield' | 'airdrop';
 
 export interface SuperweaponDef {
   name: string;
@@ -1127,6 +1415,8 @@ export interface SuperweaponDef {
   radius: number;
   /** What the targeting prompt says. */
   prompt: string;
+  /** A country's support power rather than a superweapon: no warnings to the enemy. */
+  support?: boolean;
 }
 
 export const SUPERWEAPONS: Record<SuperweaponId, SuperweaponDef> = {
@@ -1153,6 +1443,13 @@ export const SUPERWEAPONS: Record<SuperweaponId, SuperweaponDef> = {
     charge: 240,
     radius: 2.5,
     prompt: 'Click your units or buildings to make them invulnerable.',
+  },
+  airdrop: {
+    name: 'Airborne Drop',
+    charge: 300,
+    radius: 1.5,
+    prompt: 'Click where to drop the paratroopers (anywhere you’ve scouted).',
+    support: true,
   },
 };
 
@@ -1306,6 +1603,26 @@ export const STRUCTURES: Record<StructureType, StructureDef> = {
     prereqs: ['barracks'],
     weapon: 'pillboxGun',
     sight: 6,
+  },
+  a_fortress: {
+    id: 'a_fortress',
+    name: 'Fortress Gun',
+    blurb: 'Huge long-range gun emplacement. Can’t hit anything that gets too close. Needs power.',
+    faction: 'accord',
+    role: 'defense',
+    tab: 'defense',
+    ...BASE,
+    cost: 2000,
+    hp: 1300,
+    size: [2, 2],
+    height: 1.3,
+    power: -100,
+    prereqs: ['factory', 'radar'],
+    weapon: 'fortressGun',
+    turret: true,
+    needsPower: true,
+    sight: 9,
+    nation: 'france',
   },
   a_beamtower: {
     id: 'a_beamtower',
@@ -1756,12 +2073,20 @@ export const MAX_ORE = 12;
 export const ORE_VALUE = 25;
 export const GEM_VALUE = 50;
 
-export function unitAvailableTo(def: UnitDef, faction: Faction): boolean {
-  return def.faction === 'both' || def.faction === faction;
+/** Who's asking: a side, and a country on it. */
+export interface Allegiance {
+  faction: Faction;
+  nation: Nation;
 }
 
-export function structureAvailableTo(def: StructureDef, faction: Faction): boolean {
-  return def.tab !== null && def.faction === faction;
+export function unitAvailableTo(def: UnitDef, who: Allegiance): boolean {
+  if (def.nation && def.nation !== who.nation) return false;
+  return def.faction === 'both' || def.faction === who.faction;
+}
+
+export function structureAvailableTo(def: StructureDef, who: Allegiance): boolean {
+  if (def.nation && def.nation !== who.nation) return false;
+  return def.tab !== null && def.faction === who.faction;
 }
 
 export function buildTab(def: UnitDef): BuildTab {

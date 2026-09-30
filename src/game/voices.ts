@@ -24,6 +24,10 @@ type Group =
   | 'ship'
   | 'sub'
   | 'hover'
+  | 'sniper'
+  | 'sapper'
+  | 'mortar'
+  | 'minelayer'
   | 'dog';
 
 const GROUP: Record<UnitType, Group> = {
@@ -54,6 +58,13 @@ const GROUP: Record<UnitType, Group> = {
   missileship: 'ship',
   sub: 'sub',
   hovercraft: 'hover',
+  marksman: 'sniper',
+  kestrel: 'jet',
+  tankhunter: 'armour',
+  sapper: 'sapper',
+  mortar: 'mortar',
+  minelayer: 'minelayer',
+  arctank: 'armour',
 };
 
 /** Lines each side's soldiers use; the Bloc's are blunter. */
@@ -129,6 +140,26 @@ const LINES: Record<Faction, Record<Exclude<Group, 'dog'>, Lines>> = {
       move: ['Skimming over.', 'Heading out.'],
       attack: ['We’re a transport!', 'Can’t do that.'],
     },
+    sniper: {
+      select: ['Marksman.', 'Scope’s clean.', 'I see them.'],
+      move: ['Finding a spot.', 'Relocating.', 'Quietly.'],
+      attack: ['One shot.', 'Target down.', 'Got him.'],
+    },
+    sapper: {
+      select: ['Charges ready.'],
+      move: ['Moving in.'],
+      attack: ['Fire in the hole!'],
+    },
+    mortar: {
+      select: ['Mortar ready.'],
+      move: ['Moving the tube.'],
+      attack: ['Rounds away!'],
+    },
+    minelayer: {
+      select: ['Minelayer.'],
+      move: ['Moving.'],
+      attack: ['I only lay mines.'],
+    },
   },
   bloc: {
     infantry: {
@@ -200,6 +231,26 @@ const LINES: Record<Faction, Record<Exclude<Group, 'dog'>, Lines>> = {
       select: ['Hover transport.'],
       move: ['Moving.'],
       attack: ['We carry, we do not fight.'],
+    },
+    sniper: {
+      select: ['Marksman.'],
+      move: ['Moving.'],
+      attack: ['Fire.'],
+    },
+    sapper: {
+      select: ['Sapper here.', 'Charges are set.', 'Point me at it.'],
+      move: ['Running.', 'Quickly now.', 'On my way.'],
+      attack: ['Charge away!', 'Take cover!', 'This will be loud.'],
+    },
+    mortar: {
+      select: ['Mortar team.', 'Tube is ready.', 'Give me a target.'],
+      move: ['Packing up.', 'New firing spot.', 'Carrying the tube.'],
+      attack: ['Rounds away!', 'Dropping shells!', 'Adjusting fire.'],
+    },
+    minelayer: {
+      select: ['Minelayer ready.', 'Mines loaded.', 'Where do we sow?'],
+      move: ['Driving carefully.', 'Moving.', 'Watch the road.'],
+      attack: ['I lay mines, not fight.', 'No guns on this truck.'],
     },
   },
 };

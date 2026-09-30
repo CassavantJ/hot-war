@@ -15,10 +15,12 @@ import {
   type StructureType,
   type UnitType,
   type WeaponId,
+  type Nation,
 } from './rules';
 import { revealAround, updateShroud } from './shroud';
 import { tickMission, type MissionState } from './mission';
-import { tickSuperweapons, type Storm, type Strike } from './superweapons';
+import { tickMines, type Mine } from './mines';
+import { tickSuperweapons, type Drop, type Storm, type Strike } from './superweapons';
 import { tickStructure } from './structures';
 import { tickUnit } from './units';
 
@@ -59,6 +61,12 @@ export type GameEvent =
       time: number;
     }
   | { kind: 'shield'; x: number; z: number; radius: number }
+  | {
+      kind: 'airdrop';
+      from: { x: number; z: number };
+      to: { x: number; z: number };
+      time: number;
+    }
   | { kind: 'promoted'; id: number; rank: number }
   | {
       kind: 'sound';
@@ -70,6 +78,8 @@ export type GameEvent =
 export interface PlayerSetup {
   name: string;
   faction: Faction;
+  /** The country (the faction's default if missing). */
+  nation?: Nation;
   color: string;
   /** 0 = on nobody's side. */
   team: number;
@@ -106,6 +116,10 @@ export class World {
   crates: Crate[] = [];
   storms: Storm[] = [];
   strikes: Strike[] = [];
+  /** Paratroopers on their way down. */
+  drops: Drop[] = [];
+  /** Hidden mines on the field. */
+  mines: Mine[] = [];
   /** A campaign mission's script and objectives, if this is one. */
   mission: MissionState | null = null;
   brains: AiBrain[] = [];
@@ -349,6 +363,7 @@ export class World {
     resolveCollisions(this);
     tickProjectiles(this);
     tickSuperweapons(this);
+    tickMines(this);
     tickOre(this);
     if (this.settings.crates) tickCrates(this);
     this.sweep();

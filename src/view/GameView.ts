@@ -1,7 +1,8 @@
 import * as THREE from 'three';
 
 import { angleDiff, type Structure, type Unit } from '../sim/entities';
-import { UNITS, WEAPONS, type UnitType, type WeaponId } from '../sim/rules';
+import { SUPERWEAPONS, UNITS, WEAPONS, type UnitType, type WeaponId } from '../sim/rules';
+import { powerOf } from '../sim/superweapons';
 import type { GameEvent, Vec3, World } from '../sim/world';
 import { ModelBatches } from './batches';
 import { Decals, Particles, Streaks, type Rgba } from './effects';
@@ -45,6 +46,8 @@ const SPARK: Rgba = [1, 0.9, 0.6, 1];
 const SPARK_END: Rgba = [1, 0.4, 0.1, 0];
 const BEAM_COLOR = '#7fe8ff';
 const WARP: Rgba = [0.5, 0.85, 1, 1];
+const CANOPY: Rgba = [0.95, 0.95, 0.92, 0.95];
+const TROOPER: Rgba = [0.15, 0.17, 0.12, 1];
 const WARP_END: Rgba = [0.2, 0.3, 1, 0];
 
 /** Draws the battle with three.js from a fixed isometric angle. */
@@ -72,6 +75,13 @@ export class GameView {
   private readonly crates: ModelBatches;
   private readonly placement: THREE.InstancedMesh;
   private readonly corpses: Corpse[] = [];
+  /** Transport planes crossing the map for an airborne drop. */
+  private readonly flyovers: {
+    from: { x: number; z: number };
+    to: { x: number; z: number };
+    start: number;
+    overhead: number;
+  }[] = [];
   private readonly timed: Timed[] = [];
   private readonly colors = new Map<number, THREE.Color>();
   private readonly neutral = new THREE.Color('#d6d2c8');
@@ -370,6 +380,9 @@ export class GameView {
       case 'launch':
         this.launch(event.from, event.to, event.time);
         break;
+      case 'airdrop':
+        this.airdrop(event.from, event.to, event.time);
+        break;
       case 'shield':
         for (let i = 0; i < 60; i++) {
           const angle = (i / 60) * Math.PI * 2;
@@ -475,6 +488,10 @@ export class GameView {
         break;
       }
       case 'beam': {
+        if (weapon.warhead === 'shock') {
+          this.arc(from, to);
+          break;
+        }
         this.streaks.add(from, to, 0.11, BEAM_COLOR, 0.28);
         this.streaks.add(from, to, 0.035, '#ffffff', 0.2);
         this.fire.emit(
@@ -597,6 +614,50 @@ export class GameView {
       this.timed.push({ at: this.time + 0.12, run: puff });
     };
     puff();
+  }
+
+  /** A crackling electric arc between two points, in jagged segments. */
+  private arc(from: Vec3, to: Vec3): void {
+    const steps = 6;
+    let previous = from;
+    for (let i = 1; i <= steps; i++) {
+      const t = i / steps;
+      const jitter = i === steps ? 0 : 0.14;
+      const next = {
+        x: from.x + (to.x - from.x) * t + rand(jitter),
+        y: from.y + (to.y - from.y) * t + rand(jitter),
+        z: from.z + (to.z - from.z) * t + rand(jitter),
+      };
+      this.streaks.add(previous, next, 0.07, '#9fd8ff', 0.2);
+      this.streaks.add(previous, next, 0.022, '#ffffff', 0.14);
+      previous = next;
+    }
+    this.sparks(to, 6, 1.2);
+    this.fire.emit(to.x, to.y, to.z, 0, 0, 0, 0.12, 0.45, 0.1, [0.7, 0.9, 1, 1], [0.3, 0.4, 1, 0]);
+  }
+
+  /** A transport plane crosses the map and paratroopers float down behind it. */
+  private airdrop(
+    from: { x: number; z: number },
+    to: { x: number; z: number },
+    time: number,
+  ): void {
+    const overhead = time * 0.45;
+    this.flyovers.push({ from, to, start: this.time, overhead });
+    this.timed.push({
+      at: this.time + overhead,
+      run: () => {
+        for (let i = 0; i < 6; i++) {
+          const angle = (i / 6) * Math.PI * 2;
+          const x = to.x + Math.cos(angle) * 0.8;
+          const z = to.z + Math.sin(angle) * 0.8;
+          const fall = time - overhead;
+          // A white canopy drifting down, with a dark trooper under it.
+          this.smoke.emit(x, 3, z, 0, -3 / fall, 0, fall, 0.5, 0.45, CANOPY, CANOPY);
+          this.fire.emit(x, 2.8, z, 0, -2.8 / fall, 0, fall, 0.12, 0.12, TROOPER, TROOPER);
+        }
+      },
+    });
   }
 
   private bolt(x: number, z: number): void {
@@ -937,6 +998,7 @@ export class GameView {
     this.drawStructures(dt);
     this.drawUnits(alpha, dt);
     this.drawProjectiles(alpha);
+    this.drawFlyovers();
     this.drawCrates();
     this.drawPlacement(placement);
     this.fire.update(dt);
@@ -1018,7 +1080,8 @@ export class GameView {
         [1, 0.1, 0, 0],
       );
     }
-    if (structure.def.superweapon && structure.superCharge >= 1 && Math.random() < dt * 6) {
+    const power = structure.superCharge >= 1 ? powerOf(this.world, structure) : undefined;
+    if (power && !SUPERWEAPONS[power].support && Math.random() < dt * 6) {
       this.fire.emit(
         structure.cx + rand(0.4),
         structure.def.height + 0.2,
@@ -1325,9 +1388,21 @@ export class GameView {
       this.position.set(x, y, z);
       this.scale.set(1, 1, 1);
       this.base.compose(this.position, this.quaternion, this.scale);
-      const key = shot.kind === 'bomb' ? 'bomb' : shot.kind === 'artillery' ? 'rocket' : 'missile';
+      const lobbed = shot.weapon === 'mortar' || shot.weapon === 'fortressGun';
+      const key =
+        shot.weapon === 'satchel'
+          ? 'satchel'
+          : lobbed
+            ? 'shell'
+            : shot.kind === 'bomb'
+              ? 'bomb'
+              : shot.kind === 'artillery'
+                ? 'rocket'
+                : 'missile';
       batches.draw(key, projectileModel(key), this.base, this.neutral);
-      if (shot.kind === 'artillery' || shot.kind === 'missile') {
+      if (key === 'shell') {
+        this.fire.emit(x, y, z, 0, 0, 0, 0.05, 0.14, 0.06, [1, 0.85, 0.5, 1], [1, 0.5, 0.2, 0]);
+      } else if (shot.kind === 'artillery' || shot.kind === 'missile') {
         const big = shot.kind === 'artillery';
         this.smoke.emit(
           x,
@@ -1357,7 +1432,30 @@ export class GameView {
         .setPosition(crate.x, 0.05 + Math.sin(this.time * 3) * 0.04, crate.z);
       this.crates.draw('crate', crateModel, this.base, this.neutral);
     }
+    // Mines are hidden from the enemy: you only see your own side's.
+    for (const mine of this.world.mines) {
+      if (this.world.isEnemy(this.local, mine.owner)) continue;
+      this.base.makeTranslation(mine.x, 0.02, mine.z);
+      this.crates.draw('mine', mineModel, this.base, this.teamColor(mine.owner));
+    }
     this.crates.end();
+  }
+
+  private drawFlyovers(): void {
+    for (let i = this.flyovers.length - 1; i >= 0; i--) {
+      const flight = this.flyovers[i];
+      if (!flight) continue;
+      const t = (this.time - flight.start) / flight.overhead;
+      if (t > 2.4) {
+        this.flyovers.splice(i, 1);
+        continue;
+      }
+      const x = flight.from.x + (flight.to.x - flight.from.x) * t;
+      const z = flight.from.z + (flight.to.z - flight.from.z) * t;
+      const heading = Math.atan2(flight.to.z - flight.from.z, flight.to.x - flight.from.x);
+      this.base.makeRotationY(-heading).setPosition(x, 3.2, z);
+      this.missiles.draw('cargoplane', planeModel, this.base, this.neutral);
+    }
   }
 
   private drawPlacement(
@@ -1415,10 +1513,12 @@ function sandbags() {
   };
 }
 
-function projectileModel(key: 'bomb' | 'rocket' | 'missile') {
+function projectileModel(key: 'bomb' | 'rocket' | 'missile' | 'shell' | 'satchel') {
   return () => {
     const shape = new Shape();
     if (key === 'bomb') shape.sphere(0.08, 0, 0, 0, '#2a2a2a', { sx: 1.6 });
+    else if (key === 'shell') shape.sphere(0.05, 0, 0, 0, '#3a3a34', { sx: 1.5 });
+    else if (key === 'satchel') shape.box(0.1, 0.07, 0.08, 0, 0, 0, '#8b3a1d');
     else if (key === 'rocket')
       shape
         .tube(0.05, 0.5, 0, 0, 0, '#c9c3b0', { sides: 6 })
@@ -1434,6 +1534,44 @@ function projectileModel(key: 'bomb' | 'rocket' | 'missile') {
       ],
     };
   };
+}
+
+function single(geometry: THREE.BufferGeometry) {
+  return {
+    parts: [
+      {
+        name: 'hull' as PartName,
+        geometry,
+        pivot: [0, 0, 0] as [number, number, number],
+      },
+    ],
+  };
+}
+
+/** A flat anti-tank mine, rimmed in its owner's colour. */
+function mineModel() {
+  return single(
+    new Shape()
+      .cylinder(0.16, 0.18, 0.05, 0, 0.025, 0, '#3a3a30', { sides: 10 })
+      .cylinder(0.17, 0.17, 0.012, 0, 0.03, 0, '#ffffff', { team: true, sides: 10 })
+      .cylinder(0.05, 0.05, 0.03, 0, 0.06, 0, '#6a6a5a', { sides: 6 })
+      .build(),
+  );
+}
+
+/** The transport plane that flies an airborne drop. */
+function planeModel() {
+  return single(
+    new Shape()
+      .tube(0.16, 1.6, 0, 0, 0, '#8a929a', { end: 0.12, sides: 10 })
+      .cone(0.12, 0.3, 0.95, 0, 0, '#6c737b', { rz: -Math.PI / 2, sides: 10 })
+      .box(0.36, 0.03, 2.4, 0.1, 0.08, 0, '#9aa2aa')
+      .box(0.24, 0.02, 0.8, -0.7, 0.1, 0, '#9aa2aa')
+      .box(0.26, 0.36, 0.02, -0.72, 0.24, 0, '#7c848c')
+      .cylinder(0.06, 0.06, 0.2, 0.2, 0.02, 0.6, '#3a3e42', { rz: Math.PI / 2 })
+      .cylinder(0.06, 0.06, 0.2, 0.2, 0.02, -0.6, '#3a3e42', { rz: Math.PI / 2 })
+      .build(),
+  );
 }
 
 function crateModel() {

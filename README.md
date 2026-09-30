@@ -13,6 +13,11 @@ and music) is made for this game, in code.
 - **The Bloc** is heavy armour and brute force: Bear tanks, the twin-cannon Behemoth, Rocket
   Trucks, Flak Trucks, Torch Troopers, Dirigible bombers and armoured Ore Haulers.
 
+- **Nine countries**, as in the classics: America, Korea, France,
+  Germany and Great Britain for the Accord; Cuba, Iraq, Libya and Russia for the Bloc. Each
+  has one special: America's Airborne Drop, Korea's Kestrel jet, France's Fortress Gun,
+  Germany's Tank Hunter, Britain's Marksman, Cuba's Sapper, Iraq's Mortar Team, Libya's
+  Minelayer and Russia's Arc Tank. Or pick Random.
 - **Skirmish** against computer players (easy, normal and hard) on five maps for two to four
   players, two of them built around the sea.
 - **Navies**: shipyards on the water, three warships a side (the Bloc's Hunter Sub hides

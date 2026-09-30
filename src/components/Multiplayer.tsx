@@ -11,9 +11,10 @@ import {
   type OnlineSetup,
 } from '../game/net';
 import { MAPS, mapSpec } from '../sim/maps';
-import { FACTIONS, type Faction } from '../sim/rules';
+import { NATIONS } from '../sim/rules';
 import { COLORS } from '../sim/setup';
 import type { StartingUnits } from '../sim/world';
+import { CountryNote, CountrySelect } from './CountrySelect';
 import styles from './Lobby.module.css';
 import { MapPreview } from './MapPreview';
 
@@ -212,27 +213,18 @@ export function Multiplayer({ onStart }: { onStart: (game: OnlineGame) => void }
               </span>
               {member.seat === net.seat && me ? (
                 <>
-                  <label className={styles.field}>
-                    <span className="sr-only">Faction</span>
-                    <select
-                      value={me.faction}
-                      onChange={(event) => {
-                        net.setSeat(event.target.value as Faction, me.color);
-                      }}
-                    >
-                      {(Object.keys(FACTIONS) as Faction[]).map((faction) => (
-                        <option key={faction} value={faction}>
-                          {FACTIONS[faction].name}
-                        </option>
-                      ))}
-                    </select>
-                  </label>
+                  <CountrySelect
+                    value={me.nation}
+                    onChange={(nation) => {
+                      net.setSeat(nation, me.color);
+                    }}
+                  />
                   <label className={styles.field}>
                     <span className="sr-only">Colour</span>
                     <select
                       value={me.color}
                       onChange={(event) => {
-                        net.setSeat(me.faction, event.target.value);
+                        net.setSeat(me.nation, event.target.value);
                       }}
                     >
                       {COLORS.map((option) => (
@@ -248,11 +240,14 @@ export function Multiplayer({ onStart }: { onStart: (game: OnlineGame) => void }
                   </label>
                 </>
               ) : (
-                <span className={styles.memberFaction}>{FACTIONS[member.faction].name}</span>
+                <span className={styles.memberFaction}>
+                  {member.nation === 'random' ? 'Random' : NATIONS[member.nation].name}
+                </span>
               )}
             </div>
           ))}
         </div>
+        {me && <CountryNote value={me.nation} />}
         {net.closed && (
           <p className={styles.error} role="alert">
             {net.closed}

@@ -19,7 +19,7 @@ import {
 } from './entities';
 import { spawnHarvester } from './economy';
 import { BASIC_INFANTRY, WEAPONS } from './rules';
-import { chargeSuperweapon } from './superweapons';
+import { chargeSuperweapon, powerOf } from './superweapons';
 import type { World } from './world';
 import { dhypot } from './dmath';
 
@@ -59,7 +59,7 @@ export function tickStructure(world: World, structure: Structure): void {
     }
   }
   if (structure.def.walkable && player) repairPad(world, structure);
-  if (structure.def.superweapon) chargeSuperweapon(world, structure);
+  if (powerOf(world, structure)) chargeSuperweapon(world, structure);
   if (structure.garrison.length > 0) garrisonFire(world, structure);
   else if (structure.def.weapon && player) defend(world, structure);
 }

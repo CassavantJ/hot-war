@@ -460,6 +460,72 @@ function hovercraft(): Model {
   return { parts: [part('hull', shape), part('spin', fan, [-0.44, 0.3, 0])] };
 }
 
+function tankhunter(): Model {
+  const p = ACCORD;
+  // Turretless: a low sloped casemate with a long gun fixed forward.
+  const hull = treads(new Shape(), 0.86, 0.46, 0.13)
+    .box(0.7, 0.11, 0.38, -0.04, 0.18, 0, p.body)
+    .wedge(0.3, 0.12, 0.38, 0.24, 0.235, 0, p.body, { ry: Math.PI })
+    .box(0.34, 0.1, 0.3, -0.16, 0.285, 0, p.trim)
+    .wedge(0.14, 0.1, 0.3, 0.07, 0.235, 0, p.trim, { ry: Math.PI })
+    .tube(0.03, 0.56, 0.36, 0.29, 0, p.dark, { sides: 6 })
+    .tube(0.045, 0.07, 0.65, 0.29, 0, p.dark, { sides: 6 })
+    .box(0.2, 0.015, 0.31, -0.2, 0.337, 0, T, { team: true });
+  return { parts: [part('hull', hull)] };
+}
+
+function arctank(): Model {
+  const p = BLOC;
+  const hull = treads(new Shape(), 0.9, 0.5, 0.16)
+    .box(0.76, 0.15, 0.42, -0.02, 0.23, 0, p.body)
+    .wedge(0.18, 0.12, 0.42, 0.43, 0.155, 0, p.body, { ry: Math.PI })
+    .box(0.2, 0.015, 0.43, -0.22, 0.31, 0, T, { team: true });
+  // A squat turret carrying twin insulated coils and a glowing emitter.
+  const turret = new Shape()
+    .cylinder(0.17, 0.19, 0.1, 0, 0.05, 0, p.trim, { sides: 8 })
+    .cylinder(0.05, 0.05, 0.26, 0.02, 0.22, 0.09, '#b87333', { sides: 8 })
+    .cylinder(0.05, 0.05, 0.26, 0.02, 0.22, -0.09, '#b87333', { sides: 8 })
+    .sphere(0.06, 0.02, 0.37, 0.09, '#9fdcff', { glow: true })
+    .sphere(0.06, 0.02, 0.37, -0.09, '#9fdcff', { glow: true })
+    .tube(0.02, 0.2, 0.2, 0.1, 0, DARK, { sides: 5 })
+    .box(0.1, 0.02, 0.14, -0.1, 0.105, 0, T, { team: true });
+  return { parts: [part('hull', hull), part('turret', turret, [0, 0.31, 0])] };
+}
+
+function minelayer(): Model {
+  const p = BLOC;
+  const hull = treads(new Shape(), 0.82, 0.44, 0.14)
+    .box(0.22, 0.2, 0.38, 0.28, 0.25, 0, p.body)
+    .box(0.02, 0.07, 0.32, 0.395, 0.29, 0, WINDOW)
+    .box(0.5, 0.16, 0.4, -0.12, 0.22, 0, p.dark)
+    // A rack of mines on the back, and the chute they drop down.
+    .cylinder(0.06, 0.06, 0.03, -0.24, 0.32, 0.1, '#5a5a4a', { sides: 8 })
+    .cylinder(0.06, 0.06, 0.03, -0.24, 0.32, -0.1, '#5a5a4a', { sides: 8 })
+    .cylinder(0.06, 0.06, 0.03, -0.06, 0.32, 0.1, '#5a5a4a', { sides: 8 })
+    .cylinder(0.06, 0.06, 0.03, -0.06, 0.32, -0.1, '#5a5a4a', { sides: 8 })
+    .box(0.12, 0.05, 0.14, -0.42, 0.12, 0, p.trim, { rz: 0.5 })
+    .box(0.22, 0.015, 0.39, 0.28, 0.355, 0, T, { team: true });
+  return { parts: [part('hull', hull)] };
+}
+
+function kestrel(): Model {
+  const p = ACCORD;
+  // Bigger than the Falcon: twin tails and swept wings with missile rails.
+  const hull = new Shape()
+    .tube(0.07, 0.72, -0.02, 0, 0, p.body, { end: 0.05, sides: 8 })
+    .cone(0.05, 0.2, 0.44, 0, 0, p.dark, { rz: -Math.PI / 2, sides: 8 })
+    .box(0.12, 0.035, 0.07, 0.18, 0.055, 0, p.glass)
+    .box(0.3, 0.016, 0.9, -0.08, -0.005, 0, p.trim)
+    .box(0.12, 0.018, 0.16, -0.12, 0.0, 0.4, T, { team: true })
+    .box(0.12, 0.018, 0.16, -0.12, 0.0, -0.4, T, { team: true })
+    .box(0.14, 0.012, 0.34, -0.36, 0.0, 0, p.trim)
+    .box(0.13, 0.15, 0.012, -0.36, 0.08, 0.08, T, { team: true, rz: 0.4, rx: -0.2 })
+    .box(0.13, 0.15, 0.012, -0.36, 0.08, -0.08, T, { team: true, rz: 0.4, rx: 0.2 })
+    .tube(0.018, 0.18, 0.0, -0.03, 0.22, '#d8d8d8', { sides: 5 })
+    .tube(0.018, 0.18, 0.0, -0.03, -0.22, '#d8d8d8', { sides: 5 });
+  return { parts: [part('hull', hull)] };
+}
+
 const UNIT_MODELS: Record<UnitType, () => Model> = {
   rifleman: () =>
     soldier({ uniform: ACCORD.uniform, trousers: '#4d5a3c', helmet: '#56643f', gear: rifle }),
@@ -521,6 +587,41 @@ const UNIT_MODELS: Record<UnitType, () => Model> = {
           .box(0.16, 0.025, 0.025, 0.08, 0.19, 0.04, '#3a3a3a')
           .box(0.04, 0.04, 0.12, 0.02, 0.31, 0, '#6a7a6a'),
     }),
+  marksman: () =>
+    soldier({
+      uniform: '#5d6b45',
+      trousers: '#46523a',
+      helmet: '#3f4a30',
+      gear: (shape) =>
+        shape
+          .box(0.28, 0.022, 0.022, 0.12, 0.215, 0.035, '#2a2a2a')
+          .cylinder(0.014, 0.014, 0.07, 0.07, 0.24, 0.035, '#1a1a1a', { rz: Math.PI / 2 })
+          .box(0.06, 0.1, 0.11, -0.06, 0.2, 0, '#4e5a38'),
+    }),
+  sapper: () =>
+    soldier({
+      uniform: '#6b5b3e',
+      trousers: '#4a3f30',
+      helmet: '#6b5a3a',
+      gear: (shape) =>
+        shape
+          .box(0.06, 0.08, 0.1, -0.07, 0.2, 0, '#8b3a1d')
+          .box(0.05, 0.05, 0.06, 0.06, 0.18, 0.07, '#8b3a1d'),
+    }),
+  mortar: () =>
+    soldier({
+      uniform: '#7a6a4c',
+      trousers: '#4a3f30',
+      helmet: '#5b4a33',
+      gear: (shape) =>
+        shape
+          .tube(0.03, 0.22, -0.02, 0.28, -0.06, '#3d4230', { rz: 0.9 })
+          .cylinder(0.05, 0.05, 0.015, -0.08, 0.2, -0.06, '#3d4230', { rx: Math.PI / 2 }),
+    }),
+  kestrel,
+  tankhunter,
+  minelayer,
+  arctank,
   hound,
   lancer,
   striker,
@@ -989,6 +1090,22 @@ function wallLink(shape: Shape, accord: boolean): Shape {
 }
 
 /** For the build button: a short run of wall. */
+function fortressGun(): Model {
+  const hull = slab(new Shape(), 2, 2)
+    .cylinder(0.78, 0.9, 0.36, 0, 0.24, 0, CONCRETE, { sides: 10 })
+    .cylinder(0.8, 0.8, 0.06, 0, 0.44, 0, DARK, { sides: 10 })
+    .cylinder(0.81, 0.81, 0.04, 0, 0.36, 0, T, { team: true, sides: 10 });
+  const turret = new Shape()
+    .box(0.8, 0.34, 0.66, -0.12, 0.17, 0, ACCORD.body)
+    .wedge(0.24, 0.24, 0.66, 0.4, 0.05, 0, ACCORD.body, { ry: Math.PI })
+    .box(0.4, 0.05, 0.5, -0.3, 0.37, 0, ACCORD.trim)
+    .tube(0.075, 1.25, 0.84, 0.2, 0, ACCORD.dark, { sides: 10 })
+    .tube(0.1, 0.2, 1.4, 0.2, 0, ACCORD.dark, { sides: 10 })
+    .tube(0.11, 0.18, 0.4, 0.2, 0, STEEL, { sides: 10 })
+    .box(0.3, 0.02, 0.4, -0.3, 0.4, 0, T, { team: true });
+  return { parts: [part('hull', hull), part('turret', turret, [0, 0.46, 0])] };
+}
+
 function wall(accord: boolean): Model {
   const hull = wallLink(wallLink(wallPost(new Shape(), accord), accord), accord);
   return { parts: [part('hull', hull)] };
@@ -1157,6 +1274,7 @@ const STRUCTURE_MODELS: Record<StructureType, () => Model> = {
   a_lab: () => lab(ACCORD, true),
   a_pillbox: pillbox,
   a_beamtower: beamTower,
+  a_fortress: fortressGun,
   a_sam: samSite,
   a_wall: () => wall(true),
   b_hq: blocHq,

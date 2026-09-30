@@ -13,6 +13,14 @@ export interface Storm {
   next: number;
 }
 
+/** Paratroopers in the air, landing at `at`. */
+export interface Drop {
+  x: number;
+  z: number;
+  owner: number;
+  at: number;
+}
+
 export interface Strike {
   x: number;
   z: number;
@@ -26,19 +34,34 @@ const BOLT_DAMAGE = 140;
 const MISSILE_FLIGHT = 5;
 const MISSILE_DAMAGE = 1400;
 const SHIELD_TIME = 20;
+const DROP_TIME = 2.5;
+const DROP_SQUAD = 6;
 
-export function isReady(structure: Structure): boolean {
-  return structure.def.superweapon !== undefined && structure.superCharge >= 1 && structure.working;
+/**
+ * The superweapon or support power a building gives its owner: its own superweapon, or a
+ * country's power (America's Air Command drops paratroopers).
+ */
+export function powerOf(world: World, structure: Structure): SuperweaponId | undefined {
+  if (structure.def.superweapon) return structure.def.superweapon;
+  if (structure.def.id === 'a_aircommand' && world.players[structure.owner]?.nation === 'america') {
+    return 'airdrop';
+  }
+  return undefined;
+}
+
+export function isReady(world: World, structure: Structure): boolean {
+  return powerOf(world, structure) !== undefined && structure.superCharge >= 1 && structure.working;
 }
 
 /** Charges a superweapon while it has power, and warns everyone when it's ready. */
 export function chargeSuperweapon(world: World, structure: Structure): void {
-  const id = structure.def.superweapon;
+  const id = powerOf(world, structure);
   const player = world.players[structure.owner];
   if (!id || !player || structure.superCharge >= 1 || player.lowPower) return;
   structure.superCharge = Math.min(1, structure.superCharge + DT / SUPERWEAPONS[id].charge);
   if (structure.superCharge < 1) return;
   world.announce(player.index, `${SUPERWEAPONS[id].name} ready.`, 'good');
+  if (SUPERWEAPONS[id].support) return;
   for (const other of world.players) {
     if (world.isEnemy(other.index, player.index)) {
       world.announce(
@@ -86,11 +109,14 @@ export function fireSuperweapon(
   target: { x: number; z: number },
   destination?: { x: number; z: number },
 ): boolean {
-  const id = structure.def.superweapon;
-  if (!id || !isReady(structure)) return false;
+  const id = powerOf(world, structure);
+  if (!id || !isReady(world, structure)) return false;
   const owner = structure.owner;
   const def = SUPERWEAPONS[id];
   switch (id) {
+    case 'airdrop':
+      if (!airdrop(world, owner, target)) return false;
+      break;
     case 'storm':
       world.storms.push({ x: target.x, z: target.z, owner, left: STORM_TIME, next: 1.5 });
       world.emit({ kind: 'storm', x: target.x, z: target.z, radius: def.radius, time: STORM_TIME });
@@ -112,6 +138,10 @@ export function fireSuperweapon(
       break;
   }
   structure.superCharge = 0;
+  if (def.support) {
+    world.announce(owner, 'Paratroopers on the way.', 'good');
+    return true;
+  }
   for (const player of world.players) {
     world.announce(
       player.index,
@@ -120,6 +150,59 @@ export function fireSuperweapon(
     );
   }
   return true;
+}
+
+/** A transport flies over and drops a squad; they land a moment later. */
+function airdrop(world: World, owner: number, target: { x: number; z: number }): boolean {
+  const map = world.map;
+  const player = world.players[owner];
+  const cell = map.cellAt(target.x, target.z);
+  if (!player || cell < 0 || map.isWater(cell)) return false;
+  // People can only drop where they've scouted; computer players don't keep a shroud.
+  if (!player.ai && !player.shroud[cell]) return false;
+  world.drops.push({ x: target.x, z: target.z, owner, at: world.time + DROP_TIME });
+  // The plane comes in from the nearest map edge.
+  const edges = [
+    { x: -4, z: target.z, d: target.x },
+    { x: map.width + 4, z: target.z, d: map.width - target.x },
+    { x: target.x, z: -4, d: target.z },
+    { x: target.x, z: map.height + 4, d: map.height - target.z },
+  ].sort((a, b) => a.d - b.d);
+  const edge = edges[0] ?? { x: -4, z: target.z };
+  world.emit({
+    kind: 'airdrop',
+    from: { x: edge.x, z: edge.z },
+    to: { x: target.x, z: target.z },
+    time: DROP_TIME,
+  });
+  return true;
+}
+
+function land(world: World, drop: Drop): void {
+  const map = world.map;
+  const taken = new Set<number>();
+  for (let i = 0; i < DROP_SQUAD; i++) {
+    const angle = (i / DROP_SQUAD) * Math.PI * 2;
+    const x = drop.x + dcos(angle) * 0.8;
+    const z = drop.z + dsin(angle) * 0.8;
+    let cell = map.nearestOpen(x, z, 0, 4, 'ground');
+    if (cell >= 0 && taken.has(cell)) cell = map.nearestOpen(x + 1, z, 0, 5, 'ground');
+    if (cell < 0) continue;
+    taken.add(cell);
+    const unit = world.addUnit(
+      'rifleman',
+      drop.owner,
+      map.cellX(cell) + 0.5,
+      map.cellZ(cell) + 0.5,
+    );
+    unit.guardX = unit.x;
+    unit.guardZ = unit.z;
+  }
+  world.emit({ kind: 'sound', sound: 'deploy', x: drop.x, z: drop.z });
+  world.announce(drop.owner, 'Paratroopers have landed.', 'good', undefined, 8, {
+    x: drop.x,
+    z: drop.z,
+  });
 }
 
 function shield(world: World, owner: number, x: number, z: number, radius: number): void {
@@ -173,8 +256,16 @@ function phase(
   return moved > 0;
 }
 
-/** Storms throw bolts; missiles land. */
+/** Storms throw bolts; missiles and paratroopers land. */
 export function tickSuperweapons(world: World): void {
+  if (world.drops.length > 0) {
+    for (const drop of world.drops) {
+      if (world.time < drop.at) continue;
+      land(world, drop);
+      drop.at = Infinity;
+    }
+    world.drops = world.drops.filter((drop) => drop.at !== Infinity);
+  }
   if (world.storms.length > 0) {
     for (const storm of world.storms) {
       storm.left -= DT;
@@ -214,7 +305,7 @@ export function tickSuperweapons(world: World): void {
 export function superweaponsOf(world: World, owner: number): Structure[] {
   return world.structures.filter(
     (structure) =>
-      structure.owner === owner && structure.def.superweapon !== undefined && !structure.dead,
+      structure.owner === owner && !structure.dead && powerOf(world, structure) !== undefined,
   );
 }
 

@@ -7,6 +7,7 @@ import { Pathfinder } from './path';
 import { Player } from './player';
 import { Random } from './random';
 import * as rules from './rules';
+import { DEFAULT_NATION, isNation } from './rules';
 import { World } from './world';
 
 /**
@@ -165,6 +166,17 @@ export function serialize(world: World): string {
   return JSON.stringify(snapshot);
 }
 
+/** Fills in anything added to the game since an older save was made. */
+function migrate(world: World): void {
+  const fields = world as unknown as Record<string, unknown>;
+  if (!Array.isArray(fields.drops)) world.drops = [];
+  if (!Array.isArray(fields.mines)) world.mines = [];
+  for (const player of world.players) {
+    const saved: unknown = (player as unknown as Record<string, unknown>).nation;
+    if (!isNation(saved)) Object.assign(player, { nation: DEFAULT_NATION[player.faction] });
+  }
+}
+
 /** Reads a battle back in. */
 export function deserialize(text: string): World {
   const { objects } = constants();
@@ -214,5 +226,6 @@ export function deserialize(text: string): World {
   });
   const world = decode(snapshot.root);
   if (!(world instanceof World)) throw new Error("That save doesn't hold a battle.");
+  migrate(world);
   return world;
 }
